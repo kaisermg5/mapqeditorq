@@ -8,6 +8,9 @@ unk_table2 = 0xb755c
 unk_table3 = 0x13a7f0
 unk_table4 = 0xd50fc
 
+PALETTE_HEADER_TABLE = 0xff850
+PALETTE_TABLE = 0x5a2e80
+
 
 class Game:
     def __init__(self):
