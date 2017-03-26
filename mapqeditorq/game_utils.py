@@ -2,7 +2,7 @@
 MAP_HEADER_TABLE = 0x11e214
 
 TILESETS_TABLE = 0x10246c  # Table of tables
-unk_table1 = 0x107988
+MAPDATA_TABLE = 0x107988
 BLOCKS_TABLE = 0x10309c  # Pointer to pointer table
 unk_table2 = 0xb755c
 unk_table3 = 0x13a7f0
@@ -25,8 +25,11 @@ class Game:
             return 1
         return 0
 
+    def read(self, address, amount_of_bytes):
+        return self.rom_contents[address:address + amount_of_bytes]
+
     def read_u32(self, address):
-        return int.from_bytes(self.rom_contents[address:address+4], 'little')
+        return int.from_bytes(self.read(address, 4), 'little')
 
     def read_pointer(self, address):
         return self.read_u32(address) - 0x8000000
