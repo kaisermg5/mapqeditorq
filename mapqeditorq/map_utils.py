@@ -36,13 +36,13 @@ def palette_from_gba_to_rgb(data):
     return rgb_palette
 
 
-def draw_img_from_tileset(tileset, tiles_wide):
+def draw_img_from_tileset(tileset, tiles_wide, img_mode='RGB'):
     tile_amount = len(tileset)
     w, h = tileset[0].size
     total_w = w * tiles_wide
     tiles_high = ceil(tile_amount / tiles_wide)
     total_h = h * tiles_high
-    img = Image.new('RGB', (total_w, total_h))
+    img = Image.new(img_mode, (total_w, total_h))
     for i in range(tile_amount):
         x = i % tiles_wide
         y = i // tiles_wide
@@ -92,13 +92,11 @@ class Map:
         self.subindex = None
         self.header = MapHeader()
         self.data = [None, None]
-        self.imgs = None
 
         self.palette_header_index = None
         self.palettes = [WRONG_PALETTE] * 2 + ([None] * 13) + [WRONG_PALETTE]
 
         self.tilesets = None
-        self.full_tileset = None
 
         self.blocks = None
         self.block_imgs = None
@@ -121,10 +119,9 @@ class Map:
         self.load_blocks_data(game)
 
         load_tilesets_thread.join()
-        self.load_blocks_imgs(self.full_tileset)
+        self.load_blocks_imgs(self)
 
         load_data_thread.join()
-        self.draw_imgs()
 
     def load_data(self, game):
         mapdata_subtable = game.read_pointer(game_utils.MAPDATA_TABLE + self.index * 4)
@@ -155,7 +152,6 @@ class Map:
 
     def load_tilesets(self, game):
         tilesets = []
-        full_tileset = [[] for i in range(16)]
 
         tileset_subtable_ptr = game_utils.TILESETS_TABLE + self.index * 4
         tileset_subtable = game.read_pointer(tileset_subtable_ptr)
@@ -179,11 +175,7 @@ class Map:
 
             tileset_ptr_to_ptr += 0xc
 
-            for j in range(16):
-                full_tileset[j].extend(tileset.tiles[j])
-
         self.tilesets = tilesets
-        self.full_tileset = full_tileset
 
     def load_blocks_data(self, game):
         blocks_ptr_to_ptr = game.read_pointer(game_utils.BLOCKS_TABLE + 4 * self.index)
@@ -223,19 +215,42 @@ class Map:
 
         self.block_imgs = l1_block_imgs, l2_block_imgs
 
-    def draw_imgs(self):
+    def draw_layer(self, layer_num):
         data_size = len(self.data[0])
         tiles_wide = self.header.get_tiles_wide()
         tiles_high = self.header.get_tiles_high()
-        base_img = Image.new('RGB', (tiles_wide * 16, tiles_high * 16))
-        self.imgs = [base_img, base_img.copy()]
+        img = Image.new('RGB', (tiles_wide * 16, tiles_high * 16))
 
-        for i in range(2):
-            for j in range(data_size):
-                x = j % tiles_wide
-                y = j // tiles_wide
-                self.imgs[i].paste(self.block_imgs[i][self.data[i][j] + (0, self.blocks[0].amount)[i]],
-                                   (x * 16, y * 16, (x + 1) * 16, (y + 1) * 16))
+        for i in range(data_size):
+            x = i % tiles_wide
+            y = i // tiles_wide
+            img.paste(self.get_block_img(self.data[layer_num][i], layer_num),
+                      (x * 16, y * 16, (x + 1) * 16, (y + 1) * 16))
+        return img
+
+    def get_tile_img(self, pal_num, tile_num, layer_num):
+        is_second_tileset = tile_num >= 512
+        if is_second_tileset:
+            tile_num -= 512
+
+        return self.tilesets[layer_num + is_second_tileset].get_tile(pal_num, tile_num)
+
+    def get_block_img(self, block_num, layer_num):
+        #return self.block_imgs[layer_num][block_num + (0, self.blocks[0].amount)[layer_num]]
+        for i in range(layer_num, len(self.blocks), 2):
+            if block_num >= self.blocks[i].amount:
+                block_num -= self.blocks[i].amount
+            else:
+                if layer_num:
+                    return self.blocks[i].l2_imgs[block_num]
+                return self.blocks[i].l1_imgs[block_num]
+
+    def get_block_data(self, block_num, layer_num):
+        for i in range(layer_num, len(self.blocks), 2):
+            if block_num >= self.blocks[i].amount:
+                block_num -= self.blocks[i].amount
+            else:
+                return self.blocks[i].data[block_num]
 
 
 class Blocks:
@@ -272,21 +287,21 @@ class Blocks:
         self.data = data
         self.amount = amount
 
-    def load_imgs(self, tiles):
+    def load_imgs(self, map_object):
         self.l1_imgs = [None] * self.amount
         self.l2_imgs = [None] * self.amount
 
         for i in range(self.amount):
-            self.load_img_of_block(i, tiles)
+            self.load_img_of_block(i, map_object)
 
-    def load_img_of_block(self, block_num, tiles):
+    def load_img_of_block(self, block_num, map_object):
         block_data = self.data[block_num]
         bg1_img = BASE_TILE_16x16.copy()
         bg2_img = BASE_TILE_16x16.copy()
         for i in range(4):
             pos_x, pos_y = Blocks.POSITIONS[i]
-            bg1_tile = tiles[block_data[i][3]][block_data[i][0]]
-            bg2_tile = tiles[block_data[i][3]][512 + block_data[i][0]]
+            bg1_tile = map_object.get_tile_img(block_data[i][3], block_data[i][0], 0)
+            bg2_tile = map_object.get_tile_img(block_data[i][3], block_data[i][0], 1)
 
             if block_data[i][1]:
                 bg1_tile = bg1_tile.transpose(Image.FLIP_LEFT_RIGHT)
@@ -304,7 +319,11 @@ class Blocks:
 
 class Tileset:
     def __init__(self):
-        self.tiles = [([None] * 512) for i in range(16)]
+        self.paleted_tiles = [([None] * 512) for i in range(16)]
+        self.no_palette_tiles = [None] * 512
+        self.palettes_list_ref = None
+
+        self.full_imgs = [None] * 16
 
     def load(self, game, offset, palettes):
         # TODO: put actual values here
@@ -316,10 +335,28 @@ class Tileset:
                 tile_img_data.extend((pixel_pair & 0xf, pixel_pair >> 4))
             no_pal_tile = BASE_TILE_8x8.copy()
             no_pal_tile.putdata(tile_img_data)
-            for j in range(16):
-                tile = no_pal_tile.copy()
-                tile.putpalette(palettes[j])
-                self.tiles[j][i] = tile
+            self.no_palette_tiles[i] = no_pal_tile
+
+        self.palettes_list_ref = palettes
+
+    def get_tile(self, pal_num, tile_num):
+        img = self.paleted_tiles[pal_num][tile_num]
+        if img is None:
+            self.load_paletted_tile(pal_num, tile_num)
+            img = self.paleted_tiles[pal_num][tile_num]
+        return img
+
+    def load_paletted_tile(self, pal_num, tile_num):
+        tile = self.no_palette_tiles[tile_num].copy()
+        tile.putpalette(self.palettes_list_ref[pal_num])
+        self.paleted_tiles[pal_num][tile_num] = tile
+
+    def draw_imgs(self):
+        base = draw_img_from_tileset(self.no_palette_tiles, 32, 'P')
+        for i in range(16):
+            img = base.copy()
+            img.putpalette(self.palettes_list_ref[i])
+            self.full_imgs[i] = img
 
 
 if __name__ == '__main__':
@@ -328,17 +365,19 @@ if __name__ == '__main__':
     game.load('../testing/bzme.gba')
 
     map_object = Map()
-    map_index = 0x0
+    map_index = 0x15
     map_subindex = 0x0
     t = time.time()
     map_object.load(map_index, map_subindex, game)
     print('loaded in:', time.time() - t)
 
-    blocks = map_object.block_imgs
     for i in range(2):
-        img = draw_img_from_tileset(blocks[i], 16)
-        img.save('../testing/layer{}_blocks.png'.format(i + 1), 'PNG')
-
-    for i in range(2):
-        map_object.imgs[i].save('../testing/layer{}.png'.format(i + 1), 'PNG')
+        map_object.imgs[i].save(
+            '../testing/map_imgs/map_{0}_{1}_layer{2}.png'.format(hex(map_index), hex(map_subindex), i + 1),
+            'PNG'
+        )
+    exit()
+    for i in range(4):
+        img = draw_img_from_tileset(map_object.blocks[i].l1_imgs, 16)
+        img.save('../testing/map_imgs/blocks{}_layer1.png'.format(i + 1), 'PNG')
 

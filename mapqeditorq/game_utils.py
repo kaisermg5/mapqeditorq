@@ -33,3 +33,7 @@ class Game:
 
     def read_pointer(self, address):
         return self.read_u32(address) - 0x8000000
+
+    def close(self):
+        if self.file_object is not None:
+            self.file_object.close()
