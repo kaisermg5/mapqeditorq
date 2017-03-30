@@ -3,10 +3,10 @@
 import sys
 import os
 
-version = 'alpha 0.1'
+version = 'git'
 scripts = ['mqeq.py']
 
-data_files = ['resources']
+data_files = ['resources', 'README.txt']
 
 build_exe_options = {'packages': ['os', 'PyQt5', 'PIL', 'mapqeditorq'],
                      'includes': ['sip'],

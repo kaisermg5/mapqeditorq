@@ -4,14 +4,9 @@ from math import ceil
 import threading
 from random import randint
 
-try:
-    from .structure_utils import StructureBase
-    from . import lz77
-    from . import game_utils
-except SystemError:
-    from structure_utils import StructureBase
-    import lz77
-    import game_utils
+from .structure_utils import StructureBase
+from . import lz77
+from . import game_utils
 
 WRONG_PALETTE = [255, 0, 255]
 for i in range(15):
@@ -20,9 +15,20 @@ for i in range(15):
 BASE_TILE_8x8 = Image.new('P', (8, 8))
 BASE_TILE_16x16 = Image.new('RGB', (16, 16))
 
+MAPDATA_KEY = 0x324ae4
 
 def decode_mapdata_pointer(pointer):
-    return (pointer & 0x7fffffff) + 0x324ae4
+    return (pointer & 0x7fffffff) + MAPDATA_KEY
+
+
+def encode_mapdata_pointer(pointer, final=False):
+    print(hex(pointer))
+    pointer -= MAPDATA_KEY
+    if pointer < 0:
+        raise Exception('Invalid mapdata address')
+    if not final:
+        pointer += 0x80000000
+    return pointer
 
 
 def palette_from_gba_to_rgb(data):
@@ -88,6 +94,9 @@ class MapHeader(StructureBase):
 
 class Map:
     def __init__(self):
+        self.offsets = []
+        self.compressed_sizes = []
+
         self.index = None
         self.subindex = None
         self.header = MapHeader()
@@ -99,7 +108,8 @@ class Map:
         self.tilesets = None
 
         self.blocks = None
-        self.block_imgs = None
+
+        self.modified = [False, False]
 
     def load(self, index, subindex, game):
         self.index = index
@@ -119,7 +129,7 @@ class Map:
         self.load_blocks_data(game)
 
         load_tilesets_thread.join()
-        self.load_blocks_imgs(self)
+        self.load_blocks_imgs()
 
         load_data_thread.join()
 
@@ -130,9 +140,12 @@ class Map:
         for i in range(2):
             mapdata_ptr = decode_mapdata_pointer(game.read_u32(mapdata_ptr_to_ptr))
             layer_data = []
-            raw_data, _ = lz77.decompress(game.read(mapdata_ptr, 0x10000))
+            raw_data, compressed_size = lz77.decompress(game.read(mapdata_ptr, 0x10000))
             for j in range(0, len(raw_data), 2):
                 layer_data.append(int.from_bytes(raw_data[j:j + 2], 'little'))
+
+            self.offsets.append(mapdata_ptr)
+            self.compressed_sizes.append(compressed_size)
             self.data[i] = layer_data
             mapdata_ptr_to_ptr += 0xc
 
@@ -169,8 +182,8 @@ class Map:
             tileset_ptr_to_ptr += 0xc
 
         for tileset_pointer in tileset_ptrs:
-            tileset = Tileset()
-            tileset.load(game, tileset_pointer, self.palettes)
+            tileset = Tileset(tileset_pointer)
+            tileset.load(game, self.palettes)
             tilesets.append(tileset)
 
             tileset_ptr_to_ptr += 0xc
@@ -185,35 +198,22 @@ class Map:
             blocks_ptr = game.read_u32(blocks_ptr_to_ptr)
             actual_blocks_ptr = decode_mapdata_pointer(blocks_ptr)
 
-            blocks_obj = Blocks()
-            blocks_obj.load_data(game, actual_blocks_ptr)
+            blocks_obj = Blocks(actual_blocks_ptr)
+            blocks_obj.load_data(game)
             blocks.append(blocks_obj)
 
             blocks_ptr_to_ptr += 0xc
 
+        # TODO: discover why are blocks [2] and [3] useful
         self.blocks = blocks
 
-    def load_blocks_imgs(self, tiles):
-        l1_block_imgs = []
-        l2_block_imgs = []
+    def load_blocks_imgs(self):
+        load_layer2_imgs_th = threading.Thread(target=self.blocks[1].load_imgs, args=(self, 1))
+        load_layer2_imgs_th.start()
 
-        num_of_threads = len(self.blocks) - 1
-        load_imgs_threads = [None] * num_of_threads
+        self.blocks[0].load_imgs(self, 0)
 
-        for i in range(num_of_threads):
-            th = threading.Thread(target=self.blocks[i].load_imgs, args=(tiles,))
-            th.start()
-            load_imgs_threads[i] = th
-        self.blocks[-1].load_imgs(tiles)
-
-        for th in load_imgs_threads:
-            th.join()
-
-        for blocks_obj in self.blocks:
-            l1_block_imgs.extend(blocks_obj.l1_imgs)
-            l2_block_imgs.extend(blocks_obj.l2_imgs)
-
-        self.block_imgs = l1_block_imgs, l2_block_imgs
+        load_layer2_imgs_th.join()
 
     def draw_layer(self, layer_num):
         data_size = len(self.data[0])
@@ -235,22 +235,54 @@ class Map:
 
         return self.tilesets[layer_num + is_second_tileset].get_tile(pal_num, tile_num)
 
+    def get_full_tileset_imgs(self, pal_num, layer_num):
+        ret = ()
+        for tileset in self.tilesets[layer_num:layer_num + 2]:
+            ret += tileset.get_full_tileset(pal_num),
+        return ret
+
     def get_block_img(self, block_num, layer_num):
-        #return self.block_imgs[layer_num][block_num + (0, self.blocks[0].amount)[layer_num]]
-        for i in range(layer_num, len(self.blocks), 2):
-            if block_num >= self.blocks[i].amount:
-                block_num -= self.blocks[i].amount
-            else:
-                if layer_num:
-                    return self.blocks[i].l2_imgs[block_num]
-                return self.blocks[i].l1_imgs[block_num]
+        return self.blocks[layer_num].get_block_img(block_num)
 
     def get_block_data(self, block_num, layer_num):
-        for i in range(layer_num, len(self.blocks), 2):
-            if block_num >= self.blocks[i].amount:
-                block_num -= self.blocks[i].amount
-            else:
-                return self.blocks[i].data[block_num]
+        return self.blocks[layer_num].get_block_data(block_num)
+
+    def get_blocks_full_img(self, layer_num):
+        return self.blocks[layer_num].get_full_img()
+
+    def layer_to_bytes(self, layer_num):
+        data = b''
+        for block_num in self.data[layer_num]:
+            data += block_num.to_bytes(2, 'little')
+        return lz77.compress(data)
+
+    def was_modified(self, layer_num=None):
+        if layer_num is None:
+            return self.modified[0] or self.modified[1]
+        return self.modified[layer_num]
+
+    def set_map_tile(self, layer_num, tile_num, block_num):
+        if self.data[layer_num][tile_num] != block_num:
+            self.data[layer_num][tile_num] = block_num
+            if not self.was_modified(layer_num):
+                self.modified[layer_num] = True
+
+    def save_to_rom(self, game):
+        mapdata_subtable = game.read_pointer(game_utils.MAPDATA_TABLE + self.index * 4)
+        mapdata_ptr_to_ptr = game.read_pointer(mapdata_subtable + self.subindex * 4)
+        for layer_num in range(2):
+            if self.was_modified(layer_num):
+                layer_data = self.layer_to_bytes(layer_num)
+                game.delete_data(self.offsets[layer_num], self.compressed_sizes[layer_num])
+                if len(layer_data) <= self.compressed_sizes[layer_num]:
+                    game.write(self.offsets[layer_num], layer_data)
+                else:
+                    layer_data_offset = game.write_at_free_space(layer_data, start_address=MAPDATA_KEY)
+                    encoded_offset = encode_mapdata_pointer(layer_data_offset, layer_num)
+                    game.write_u32(mapdata_ptr_to_ptr + (0, 0xc)[layer_num], encoded_offset)
+
+    def get_indexes(self):
+        return self.index, self.subindex
 
 
 class Blocks:
@@ -261,14 +293,18 @@ class Blocks:
         (8, 8)
     )
 
-    def __init__(self):
+    def __init__(self, offset):
+        self.offset = offset
+        self.compressed_size = None
+
         self.data = None
-        self.l1_imgs = None
-        self.l2_imgs = None
+        self.imgs = None
         self.amount = None
 
-    def load_data(self, game, offset):
-        raw_data, _ = lz77.decompress(game.read(offset, 0x10000))
+        self.full_img = None
+
+    def load_data(self, game):
+        raw_data, compressed_size = lz77.decompress(game.read(self.offset, 0x10000))
         amount = ceil(len(raw_data) / 8)
         data = [None] * amount
 
@@ -287,47 +323,60 @@ class Blocks:
         self.data = data
         self.amount = amount
 
-    def load_imgs(self, map_object):
-        self.l1_imgs = [None] * self.amount
-        self.l2_imgs = [None] * self.amount
+        self.compressed_size = compressed_size
+
+    def load_imgs(self, map_object, layer_num):
+        self.imgs = [None] * self.amount
 
         for i in range(self.amount):
-            self.load_img_of_block(i, map_object)
+            self.load_img_of_block(i, map_object, layer_num)
+        self.full_img = draw_img_from_tileset(self.imgs, 8)
 
-    def load_img_of_block(self, block_num, map_object):
+    def load_img_of_block(self, block_num, map_object, layer_num):
         block_data = self.data[block_num]
-        bg1_img = BASE_TILE_16x16.copy()
-        bg2_img = BASE_TILE_16x16.copy()
+        img = BASE_TILE_16x16.copy()
         for i in range(4):
             pos_x, pos_y = Blocks.POSITIONS[i]
-            bg1_tile = map_object.get_tile_img(block_data[i][3], block_data[i][0], 0)
-            bg2_tile = map_object.get_tile_img(block_data[i][3], block_data[i][0], 1)
+            tile = map_object.get_tile_img(block_data[i][3], block_data[i][0], layer_num)
 
             if block_data[i][1]:
-                bg1_tile = bg1_tile.transpose(Image.FLIP_LEFT_RIGHT)
-                bg2_tile = bg2_tile.transpose(Image.FLIP_LEFT_RIGHT)
+                tile = tile.transpose(Image.FLIP_LEFT_RIGHT)
             if block_data[i][2]:
-                bg1_tile = bg1_tile.transpose(Image.FLIP_TOP_BOTTOM)
-                bg2_tile = bg2_tile.transpose(Image.FLIP_LEFT_RIGHT)
+                tile = tile.transpose(Image.FLIP_TOP_BOTTOM)
 
-            bg1_img.paste(bg1_tile, (pos_x, pos_y, pos_x + 8, pos_y + 8))
-            bg2_img.paste(bg2_tile, (pos_x, pos_y, pos_x + 8, pos_y + 8))
+            img.paste(tile, (pos_x, pos_y, pos_x + 8, pos_y + 8))
 
-        self.l1_imgs[block_num] = bg1_img
-        self.l2_imgs[block_num] = bg2_img
+        self.imgs[block_num] = img
+
+    def get_block_img(self, block_num):
+        try:
+            return self.imgs[block_num]
+        except IndexError:
+            return BASE_TILE_16x16
+
+    def get_block_data(self, block_num):
+        return self.data[block_num]
+
+    def get_full_img(self):
+        return self.full_img
+
+    def is_loaded(self):
+        return self.data is not None and self.imgs is not None
 
 
 class Tileset:
-    def __init__(self):
+    def __init__(self, offset):
+        self.offset = offset
+        self.compressed_size = None
+
         self.paleted_tiles = [([None] * 512) for i in range(16)]
         self.no_palette_tiles = [None] * 512
         self.palettes_list_ref = None
 
         self.full_imgs = [None] * 16
 
-    def load(self, game, offset, palettes):
-        # TODO: put actual values here
-        img_data, _ = lz77.decompress(game.read(offset, 0x10000))
+    def load(self, game, palettes):
+        img_data, compressed_size = lz77.decompress(game.read(self.offset, 0x10000))
 
         for i in range(len(img_data) // 32):
             tile_img_data = []
@@ -338,6 +387,7 @@ class Tileset:
             self.no_palette_tiles[i] = no_pal_tile
 
         self.palettes_list_ref = palettes
+        self.compressed_size = compressed_size
 
     def get_tile(self, pal_num, tile_num):
         img = self.paleted_tiles[pal_num][tile_num]
@@ -358,26 +408,10 @@ class Tileset:
             img.putpalette(self.palettes_list_ref[i])
             self.full_imgs[i] = img
 
+    def is_loaded(self):
+        return self.no_palette_tiles[0] is not None
 
-if __name__ == '__main__':
-    import time
-    game = game_utils.Game()
-    game.load('../testing/bzme.gba')
-
-    map_object = Map()
-    map_index = 0x15
-    map_subindex = 0x0
-    t = time.time()
-    map_object.load(map_index, map_subindex, game)
-    print('loaded in:', time.time() - t)
-
-    for i in range(2):
-        map_object.imgs[i].save(
-            '../testing/map_imgs/map_{0}_{1}_layer{2}.png'.format(hex(map_index), hex(map_subindex), i + 1),
-            'PNG'
-        )
-    exit()
-    for i in range(4):
-        img = draw_img_from_tileset(map_object.blocks[i].l1_imgs, 16)
-        img.save('../testing/map_imgs/blocks{}_layer1.png'.format(i + 1), 'PNG')
-
+    def get_full_tileset(self, palette_num):
+        if self.full_imgs[0] is None:
+            self.draw_imgs()
+        return self.full_imgs[palette_num]
