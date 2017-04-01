@@ -54,6 +54,7 @@ class Game:
     def write(self, address, data):
         self.file_object.seek(address)
         self.file_object.write(data)
+        self.rom_contents_buffer[address:address + len(data)] = data
         if not self.was_modified():
             self.modified = True
 
@@ -72,6 +73,9 @@ class Game:
 
     def delete_data(self, address, size):
         self.write(address, b'\xff' * size)
+
+    def loaded(self):
+        return self.rom_contents_buffer is not None
 
     def close(self):
         if self.file_object is not None:

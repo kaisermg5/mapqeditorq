@@ -22,7 +22,6 @@ def decode_mapdata_pointer(pointer):
 
 
 def encode_mapdata_pointer(pointer, final=False):
-    print(hex(pointer))
     pointer -= MAPDATA_KEY
     if pointer < 0:
         raise Exception('Invalid mapdata address')
@@ -198,7 +197,7 @@ class Map:
             blocks_ptr = game.read_u32(blocks_ptr_to_ptr)
             actual_blocks_ptr = decode_mapdata_pointer(blocks_ptr)
 
-            blocks_obj = Blocks(actual_blocks_ptr)
+            blocks_obj = Blocks(actual_blocks_ptr, blocks_ptr_to_ptr)
             blocks_obj.load_data(game)
             blocks.append(blocks_obj)
 
@@ -247,6 +246,9 @@ class Map:
     def get_block_data(self, block_num, layer_num):
         return self.blocks[layer_num].get_block_data(block_num)
 
+    def set_block_data(self, block_num, block_part, data, layer_num):
+        self.blocks[layer_num].set_block_data(block_num, block_part, data, self, layer_num)
+
     def get_blocks_full_img(self, layer_num):
         return self.blocks[layer_num].get_full_img()
 
@@ -256,30 +258,45 @@ class Map:
             data += block_num.to_bytes(2, 'little')
         return lz77.compress(data)
 
-    def was_modified(self, layer_num=None):
-        if layer_num is None:
-            return self.modified[0] or self.modified[1]
+    def was_modified(self):
+        if not self.modified[0] and not self.modified[1]:
+            for blocks_obj in self.blocks:
+                if blocks_obj.was_modified():
+                    return True
+            return False
+        return True
+
+    def was_layer_modified(self, layer_num):
         return self.modified[layer_num]
 
     def set_map_tile(self, layer_num, tile_num, block_num):
         if self.data[layer_num][tile_num] != block_num:
             self.data[layer_num][tile_num] = block_num
-            if not self.was_modified(layer_num):
+            if not self.was_layer_modified(layer_num):
                 self.modified[layer_num] = True
 
     def save_to_rom(self, game):
         mapdata_subtable = game.read_pointer(game_utils.MAPDATA_TABLE + self.index * 4)
         mapdata_ptr_to_ptr = game.read_pointer(mapdata_subtable + self.subindex * 4)
         for layer_num in range(2):
-            if self.was_modified(layer_num):
+            if self.was_layer_modified(layer_num):
                 layer_data = self.layer_to_bytes(layer_num)
                 game.delete_data(self.offsets[layer_num], self.compressed_sizes[layer_num])
-                if len(layer_data) <= self.compressed_sizes[layer_num]:
+                new_compressed_size = len(layer_data)
+                if new_compressed_size <= self.compressed_sizes[layer_num]:
                     game.write(self.offsets[layer_num], layer_data)
                 else:
                     layer_data_offset = game.write_at_free_space(layer_data, start_address=MAPDATA_KEY)
                     encoded_offset = encode_mapdata_pointer(layer_data_offset, layer_num)
-                    game.write_u32(mapdata_ptr_to_ptr + (0, 0xc)[layer_num], encoded_offset)
+                    game.write_u32(mapdata_ptr_to_ptr + (0xc * layer_num), encoded_offset)
+
+                    self.compressed_sizes[layer_num] = new_compressed_size
+                    self.offsets[layer_num] = layer_data_offset
+                self.modified[layer_num] = False
+
+        for blocks_obj in self.blocks:
+            if blocks_obj.was_modified():
+                blocks_obj.save_to_rom(game)
 
     def get_indexes(self):
         return self.index, self.subindex
@@ -293,15 +310,16 @@ class Blocks:
         (8, 8)
     )
 
-    def __init__(self, offset):
+    def __init__(self, offset, ptr_to_encoded_ptr):
         self.offset = offset
+        self.ptr_to_encoded_ptr = ptr_to_encoded_ptr
         self.compressed_size = None
 
         self.data = None
         self.imgs = None
         self.amount = None
 
-        self.full_img = None
+        self.modified = False
 
     def load_data(self, game):
         raw_data, compressed_size = lz77.decompress(game.read(self.offset, 0x10000))
@@ -330,7 +348,6 @@ class Blocks:
 
         for i in range(self.amount):
             self.load_img_of_block(i, map_object, layer_num)
-        self.full_img = draw_img_from_tileset(self.imgs, 8)
 
     def load_img_of_block(self, block_num, map_object, layer_num):
         block_data = self.data[block_num]
@@ -354,14 +371,50 @@ class Blocks:
         except IndexError:
             return BASE_TILE_16x16
 
+    def set_block_data(self, block_num, block_part, data, map_object, layer_num):
+        self.data[block_num][block_part] = data
+        self.load_img_of_block(block_num, map_object, layer_num)
+        self.modified = True
+
     def get_block_data(self, block_num):
         return self.data[block_num]
 
     def get_full_img(self):
-        return self.full_img
+        return draw_img_from_tileset(self.imgs, 8)
 
     def is_loaded(self):
         return self.data is not None and self.imgs is not None
+
+    def was_modified(self):
+        return self.modified
+
+    def to_bytes(self):
+        raw_data = b''
+        for block_data in self.data:
+            block_raw_data = b''
+            for block_part_data in block_data:
+                tile_num, flip_x, flip_y, pal_num = block_part_data
+                num = tile_num | (flip_x << 10) | (flip_y << 11) | pal_num << 12
+                block_raw_data += num.to_bytes(2, 'little')
+            raw_data += block_raw_data
+        return raw_data
+
+    def save_to_rom(self, game):
+        raw_data = self.to_bytes()
+        compressed_data = lz77.compress(raw_data)
+        game.delete_data(self.offset, self.compressed_size)
+
+        new_compressed_size = len(compressed_data)
+        if self.compressed_size >= new_compressed_size:
+            game.write(self.offset, compressed_data)
+        else:
+            new_offset = game.write_at_free_space(compressed_data, start_address=MAPDATA_KEY)
+            is_final = (game.read_u32(self.ptr_to_encoded_ptr) & 0x80000000) == 0
+            game.write_u32(self.ptr_to_encoded_ptr, encode_mapdata_pointer(new_offset, is_final))
+
+            self.offset = new_offset
+            self.compressed_size = new_compressed_size
+        self.modified = False
 
 
 class Tileset:
@@ -402,7 +455,9 @@ class Tileset:
         self.paleted_tiles[pal_num][tile_num] = tile
 
     def draw_imgs(self):
-        base = draw_img_from_tileset(self.no_palette_tiles, 32, 'P')
+        base = draw_img_from_tileset(self.no_palette_tiles, 16, 'P')
+        h, w = base.size
+        base = base.resize((h * 2, w * 2))
         for i in range(16):
             img = base.copy()
             img.putpalette(self.palettes_list_ref[i])

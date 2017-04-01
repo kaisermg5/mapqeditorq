@@ -87,7 +87,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Connect menubar actions
         self.ui.action_Open_ROM.triggered.connect(lambda: self.open_rom())
-        self.ui.action_Save.triggered.connect(lambda: print('save'))
+        self.ui.action_Save.triggered.connect(lambda: self.save())
 
         # Connect main widgets
         self.ui.map_index_ledit.returnPressed.connect(self.load_map)
@@ -114,10 +114,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.layer_blocks_scene = QtWidgets.QGraphicsScene()
         self.ui.blocks_view.setScene(self.ui.layer_blocks_scene)
 
-        self.ui.selected_block_ledit.returnPressed.connect(lambda: print('test'))
+        self.ui.selected_block_ledit.returnPressed.connect(self.direct_block_selection)
 
         # Setup Blocks Editor tab
         self.selected_palette = 0
+        self.selected_tile = 0
         self.ui.blocks_view_2.setScene(self.ui.layer_blocks_scene)
 
         self.tilesets_imgs_qt = None
@@ -134,7 +135,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tile_preview_pixmap_qobject = None
 
         self.ui.tile_preview_scene = QtWidgets.QGraphicsScene()
-        self.ui.selected_tile_view.setScene(QtWidgets.QGraphicsScene())
+        self.ui.selected_tile_view.setScene(self.ui.tile_preview_scene)
 
         self.block_preview_img_qt = None
         self.block_preview_pixmap = None
@@ -144,6 +145,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.selected_block_view.setScene(self.ui.block_preview_scene)
 
         self.ui.palette_combobox.currentIndexChanged.connect(self.selected_palette_changed)
+
+        self.ui.flipX_checkbox.clicked.connect(self.print_tile_preview)
+        self.ui.flipY_checkbox.clicked.connect(self.print_tile_preview)
+
+        self.ui.selected_tile_ledit.returnPressed.connect(self.direct_tile_selection)
+
+    # Gui utils
+    def statusbar_show(self, message):
+        self.ui.statusbar.showMessage(message)
 
     # Closing events
     def closeEvent(self, event):
@@ -157,11 +167,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def close_map_confirm(self):
         if self.loaded_map is not None and self.loaded_map.was_modified():
+            self.setEnabled(False)
             result = confirm_saving_dialog('The map has been modified')
             if result == QtWidgets.QMessageBox.Cancel:
+                self.setEnabled(True)
                 return False
             elif result == QtWidgets.QMessageBox.Save:
-                self.loaded_map.save_to_rom(self.game)
+                self.save()
+            self.setEnabled(True)
         return True
 
     def save_settings(self):
@@ -177,15 +190,23 @@ class MainWindow(QtWidgets.QMainWindow):
         if filename:
             self.settings.last_opened_path = os.path.dirname(filename)
 
-            self.ui.statusbar.showMessage('Loading Rom...')
+            self.statusbar_show('Loading Rom...')
             if self.game.load(filename):
                 # Warning game code doesn't match
                 pass
-            self.ui.statusbar.showMessage('Rom loaded')
+            self.statusbar_show('Rom loaded')
             self.ui.centralwidget.setEnabled(True)
 
     def save(self):
-        pass
+        if not self.game.loaded():
+            self.statusbar_show('Game not loaded')
+            return
+        elif self.loaded_map is None or not self.loaded_map.was_modified():
+            self.statusbar_show('No changes to save')
+            return
+        self.statusbar_show('Saving...')
+        self.loaded_map.save_to_rom(self.game)
+        self.statusbar_show('Map saved')
 
     # Load map
     def load_map(self):
@@ -199,20 +220,26 @@ class MainWindow(QtWidgets.QMainWindow):
                                            'Both map index and sub index must be hexadecimal numbers')
             return
         if self.loaded_map is not None and self.loaded_map.get_indexes() == (map_index, map_subindex):
-            self.ui.statusbar.showMessage('Map already loaded')
+            self.statusbar_show('Map already loaded')
             return
+
+        old_map = self.loaded_map
         self.loaded_map = Map()
-        self.ui.statusbar.showMessage('Loading Map...')
+        self.statusbar_show('Loading Map...')
+        self.setEnabled(False)
         t = time.time()
         try:
             self.loaded_map.load(map_index, map_subindex, self.game)
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, 'Error loading map', str(e))
-            self.ui.statusbar.showMessage('Failed to load the map')
+            self.statusbar_show('Failed to load the map')
+            self.loaded_map = old_map
+            self.setEnabled(True)
             return
-        self.ui.statusbar.showMessage(
+        self.statusbar_show(
             'Map loaded in {} seconds'.format(time.time() - t)
         )
+        self.setEnabled(True)
 
         self.map_layer_imgs_qt = [None, None]
         self.map_layer_pixmaps = [None, None]
@@ -228,16 +255,20 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if self.selected_layer is None:
             self.select_layer(0)
+            self.print_block_preview()
         else:
             self.print_map()
             self.print_blocks_img()
-        self.print_tilesets()
+            self.print_tilesets()
+            self.print_tile_preview()
+            self.print_block_preview()
 
     def select_layer(self, layer_num):
         self.selected_layer = layer_num
         self.print_map(quick=True)
         self.print_blocks_img(quick=True)
         self.print_tilesets()
+        self.print_tile_preview()
 
         if layer_num:
             self.ui.layer1_button.setEnabled(True)
@@ -245,18 +276,6 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.ui.layer1_button.setEnabled(False)
             self.ui.layer2_button.setEnabled(True)
-
-    def select_block(self, block_num):
-        self.selected_block = block_num
-        self.print_blocks_img()
-        self.ui.selected_block_ledit.setText(hex(block_num))
-
-    def direct_block_selection(self):
-        try:
-            block_num = int(self.ui.selected_block_ledit.text(), base=16)
-        except ValueError:
-            block_num = 0
-        self.select_block(block_num)
 
     # Map Layer tab
     def map_clicked(self, event):
@@ -290,6 +309,21 @@ class MainWindow(QtWidgets.QMainWindow):
             )
         self.ui.map_layer_scene.update()
 
+    def select_block(self, block_num):
+        self.selected_block = block_num
+        self.print_blocks_img()
+        self.print_block_preview(delete_old=False)
+        self.ui.selected_block_ledit.setText(hex(block_num))
+
+    def direct_block_selection(self):
+        try:
+            block_num = int(self.ui.selected_block_ledit.text(), base=16)
+            if block_num > 0xffff:
+                raise ValueError
+        except ValueError:
+            block_num = 0
+        self.select_block(block_num)
+
     def blocks_img_clicked(self, event):
         block_num = get_tile_num(event, self.layer_blocks_pixmaps[self.selected_layer])
         self.select_block(block_num)
@@ -321,33 +355,111 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.layer_blocks_scene.update()
 
         draw_square_over_tile(self.layer_blocks_pixmaps[self.selected_layer], self.selected_block)
-    #
 
     # Blocks Editor Tab
+    def tileset_clicked(self, event, tileset_num):
+        tile_num = get_tile_num(event, self.tileset_pixmaps[tileset_num]) + (0, 512)[tileset_num]
+        self.select_tile(tile_num)
 
-    def tileset_clicked(self):
-        pass
-
-    def print_tilesets(self):
+    def print_tilesets(self, delete_old=True):
         tileset_imgs = self.loaded_map.get_full_tileset_imgs(self.selected_palette, self.selected_layer)
         for i in range(2):
-            self.ui.tileset_view_scenes[i].clear()
             self.tilesets_imgs_qt[i] = ImageQt.ImageQt(tileset_imgs[i])
             self.tileset_pixmaps[i] = QtGui.QPixmap.fromImage(self.tilesets_imgs_qt[i])
-            self.tileset_pixmap_qobjects[i] = qmapview.QMapPixmap(self.tileset_pixmaps[i])
-            self.ui.tileset_view_scenes[i].addItem(self.tileset_pixmap_qobjects[i])
+
+            if delete_old:
+                self.ui.tileset_view_scenes[i].clear()
+
+                self.tileset_pixmap_qobjects[i] = qmapview.QMapPixmap(self.tileset_pixmaps[i])
+                self.tileset_pixmap_qobjects[i].clicked.connect(
+                    # For some kind of weird reason
+                    # lambda event: self.tileset_clicked(event, i)
+                    # doesn't seem to work...
+                    (lambda event: self.tileset_clicked(event, 0),
+                     lambda event: self.tileset_clicked(event, 1))[i]
+                )
+
+                self.ui.tileset_view_scenes[i].addItem(self.tileset_pixmap_qobjects[i])
+            else:
+                self.tileset_pixmap_qobjects[i].set_pixmap(self.tileset_pixmaps[i])
             self.ui.tileset_view_scenes[i].update()
 
-    def block_preview_clicked(self):
-        pass
+            selected_tile_tileset = self.selected_tile >= 512
+            draw_square_over_tile(self.tileset_pixmaps[selected_tile_tileset],
+                                  self.selected_tile - (0, 512)[selected_tile_tileset])
 
-    def print_block_preview(self):
-        pass
+    def print_tile_preview(self, delete_old=True):
+        tile_img = self.loaded_map.get_tile_img(self.selected_palette, self.selected_tile,
+                                                self.selected_layer)
+
+        if self.ui.flipX_checkbox.isChecked():
+            tile_img = tile_img.transpose(Image.FLIP_LEFT_RIGHT)
+        if self.ui.flipY_checkbox.isChecked():
+            tile_img = tile_img.transpose(Image.FLIP_TOP_BOTTOM)
+        h, w = tile_img.size
+        tile_img = tile_img.resize((h * 2, w * 2))
+
+        self.tile_preview_img_qt = ImageQt.ImageQt(tile_img)
+        self.tile_preview_pixmap = QtGui.QPixmap.fromImage(self.tile_preview_img_qt)
+        if delete_old:
+            self.ui.tile_preview_scene.clear()
+            self.tile_preview_pixmap_qobject = qmapview.QMapPixmap(self.tile_preview_pixmap)
+            self.ui.tile_preview_scene.addItem(self.tile_preview_pixmap_qobject)
+        else:
+            self.tile_preview_pixmap_qobject.set_pixmap(self.tile_preview_pixmap)
+        self.ui.tile_preview_scene.update()
+
+    def select_tile(self, tile_num):
+        self.selected_tile = tile_num
+        self.print_tilesets(delete_old=False)
+        self.print_tile_preview(delete_old=False)
+        self.ui.selected_tile_ledit.setText(hex(self.selected_tile))
+
+    def direct_tile_selection(self):
+        try:
+            tile_num = int(self.ui.selected_tile_ledit.text(), base=16)
+            if tile_num > 0x3ff:
+                raise ValueError
+        except ValueError:
+            tile_num = 0
+        self.select_tile(tile_num)
+
+    def block_preview_clicked(self, event):
+        block_part = get_tile_num(event, self.block_preview_pixmap)
+
+        flip_x = self.ui.flipX_checkbox.isChecked()
+        flip_y = self.ui.flipY_checkbox.isChecked()
+        data = [self.selected_tile, flip_x, flip_y, self.selected_palette]
+
+        if self.loaded_map.get_block_data(self.selected_block, self.selected_layer)[block_part] != data:
+            self.loaded_map.set_block_data(self.selected_block, block_part, data, self.selected_layer)
+            self.print_block_preview(delete_old=False)
+            self.print_blocks_img(delete_old=False)
+            self.print_map(delete_old=False)
+
+    def print_block_preview(self, delete_old=True):
+        block_img = self.loaded_map.get_block_img(self.selected_block, self.selected_layer)
+
+        h, w = block_img.size
+        block_img = block_img.resize((h * 2, w * 2))
+
+        self.block_preview_img_qt = ImageQt.ImageQt(block_img)
+        self.block_preview_pixmap = QtGui.QPixmap.fromImage(self.block_preview_img_qt)
+        if delete_old:
+            self.ui.block_preview_scene.clear()
+
+            self.block_preview_pixmap_qobject = qmapview.QMapPixmap(self.block_preview_pixmap)
+            self.block_preview_pixmap_qobject.clicked.connect(self.block_preview_clicked)
+
+            self.ui.block_preview_scene.addItem(self.block_preview_pixmap_qobject)
+        else:
+            self.block_preview_pixmap_qobject.set_pixmap(self.block_preview_pixmap)
+        self.ui.block_preview_scene.update()
 
     def selected_palette_changed(self):
         self.selected_palette = self.ui.palette_combobox.currentIndex()
-        self.print_tilesets()
-
+        self.print_tilesets(delete_old=False)
+        self.print_tile_preview(delete_old=False)
 
 
 def main():
