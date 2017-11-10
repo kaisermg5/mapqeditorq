@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>900</width>
-    <height>677</height>
+    <height>692</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -260,27 +260,14 @@
           <property name="sizeConstraint">
            <enum>QLayout::SetDefaultConstraint</enum>
           </property>
-          <item row="1" column="1">
+          <item row="1" column="2">
            <widget class="QLabel" name="label_15">
             <property name="text">
              <string>Palette:</string>
             </property>
            </widget>
           </item>
-          <item row="1" column="0">
-           <spacer name="horizontalSpacer_2">
-            <property name="orientation">
-             <enum>Qt::Horizontal</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>40</width>
-              <height>20</height>
-             </size>
-            </property>
-           </spacer>
-          </item>
-          <item row="2" column="2">
+          <item row="2" column="3">
            <widget class="QLineEdit" name="selected_tile_ledit">
             <property name="maximumSize">
              <size>
@@ -296,7 +283,7 @@
             </property>
            </widget>
           </item>
-          <item row="1" column="2">
+          <item row="1" column="3">
            <widget class="QComboBox" name="palette_combobox">
             <property name="maximumSize">
              <size>
@@ -389,14 +376,37 @@
             </item>
            </widget>
           </item>
-          <item row="2" column="1">
+          <item row="2" column="2">
            <widget class="QLabel" name="label_5">
             <property name="text">
              <string>Selected tile:</string>
             </property>
            </widget>
           </item>
-          <item row="0" column="1">
+          <item row="1" column="0" rowspan="2">
+           <widget class="QGraphicsView" name="selected_tile_view">
+            <property name="maximumSize">
+             <size>
+              <width>24</width>
+              <height>24</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1" rowspan="3">
+           <spacer name="horizontalSpacer_2">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="0" column="2" colspan="2">
            <spacer name="verticalSpacer_3">
             <property name="orientation">
              <enum>Qt::Vertical</enum>
@@ -435,7 +445,30 @@
         </item>
         <item row="0" column="1">
          <layout class="QGridLayout" name="gridLayout_4">
-          <item row="0" column="0" colspan="2">
+          <item row="1" column="0">
+           <widget class="QCheckBox" name="flipX_checkbox">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="layoutDirection">
+             <enum>Qt::LeftToRight</enum>
+            </property>
+            <property name="text">
+             <string>Flip X</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QCheckBox" name="flipY_checkbox">
+            <property name="text">
+             <string>Flip Y</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0" colspan="3">
            <layout class="QHBoxLayout" name="horizontalLayout_5">
             <item>
              <spacer name="horizontalSpacer">
@@ -481,35 +514,31 @@
             </item>
            </layout>
           </item>
-          <item row="1" column="0">
-           <widget class="QCheckBox" name="flipX_checkbox">
+          <item row="2" column="1">
+           <widget class="QLabel" name="label_6">
+            <property name="text">
+             <string>Behaviours: </string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="2">
+           <widget class="QLineEdit" name="block_behaviours_ledit">
             <property name="sizePolicy">
-             <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+             <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
               <horstretch>0</horstretch>
               <verstretch>0</verstretch>
              </sizepolicy>
             </property>
-            <property name="layoutDirection">
-             <enum>Qt::LeftToRight</enum>
+            <property name="minimumSize">
+             <size>
+              <width>4</width>
+              <height>0</height>
+             </size>
             </property>
-            <property name="text">
-             <string>Flip X</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="0">
-           <widget class="QCheckBox" name="flipY_checkbox">
-            <property name="text">
-             <string>Flip Y</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="1" rowspan="2">
-           <widget class="QGraphicsView" name="selected_tile_view">
             <property name="maximumSize">
              <size>
-              <width>24</width>
-              <height>24</height>
+              <width>60</width>
+              <height>16777215</height>
              </size>
             </property>
            </widget>

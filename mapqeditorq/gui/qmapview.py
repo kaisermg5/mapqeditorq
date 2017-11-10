@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 from PyQt5 import QtCore, QtWidgets
-import time
 
 
 class QMapPixmap(QtWidgets.QGraphicsObject):
@@ -21,17 +20,15 @@ class QMapPixmap(QtWidgets.QGraphicsObject):
         self.pixmap = pixmap
 
     def mousePressEvent(self, event):
-        # print('pressed')
         self.button = event.button()
         self.clicked.emit(event)
 
     def mouseMoveEvent(self, event):
-        # print('moved')
-        event.origin_button = self.button
+        b = self.button
+        event.button = lambda: b
         self.click_dragged.emit(event)
 
     def mouseReleaseEvent(self, event):
-        # print('released')
         self.click_release.emit(event)
         self.button = None
 

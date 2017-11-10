@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 
-from mapqeditorq.main_gui import main
+if __name__ == '__main__':
+    from mapqeditorq.gui.main_gui import main
 
-main()
+    main()
