@@ -72,6 +72,11 @@ class Blocks:
     def load_data(self, game):
         data_ptr = self.header.get_compressed_data_ptr()
         raw_data, self.original_compressed_size = game.read_compressed(data_ptr)
+        self.load_from_raw(raw_data)
+
+    def load_from_raw(self, raw_data):
+        if self.data is not None and not self.was_modified():
+            self.modified = True
         self.amount = int(ceil(len(raw_data) / 8))
         self.data = [None] * self.amount
         for i in range(self.amount):
@@ -177,6 +182,12 @@ class Blocks:
     def set_block_behaviours(self, block_num, value):
         self.behaviours.set_data(block_num, value)
 
+    def get_behaviour_data(self):
+        return self.behaviours.to_bytes()
+
+    def set_behaviour_data(self, raw_data):
+        self.behaviours.load_from_raw(raw_data)
+
 
 class BlocksBehaviour:
     def __init__(self):
@@ -189,10 +200,16 @@ class BlocksBehaviour:
     def load(self, game, header, header_ptr):
         self.header = header
         self.header_ptr = header_ptr
-        amount = self.header.get_uncompressed_size() // 2
-        self.data = [None] * amount
         raw_data, self.original_compressed_size = game.read_compressed(self.header.get_compressed_data_ptr())
+        self.load_from_raw(raw_data)
 
+    def load_from_raw(self, raw_data):
+        if self.data is not None and not self.was_modified():
+            self.modified = True
+            amount = len(raw_data) // 2
+        else:
+            amount = self.header.get_uncompressed_size() // 2
+        self.data = [None] * amount
         for i in range(amount):
             self.data[i] = int.from_bytes(raw_data[2 * i:2 * i + 2], 'little')
 
@@ -207,10 +224,13 @@ class BlocksBehaviour:
                 compressed=True,
                 start_address=common.MAPDATA_KEY
             )
-
+            print(self.header)
             if old_offset != new_offset:
+                print('repointed')
+                print(hex(old_offset), hex(new_offset))
                 self.header.set_compressed_data_ptr(new_offset)
                 game.write(self.header_ptr, self.header.to_bytes())
+                print(self.header)
 
             self.modified = False
 

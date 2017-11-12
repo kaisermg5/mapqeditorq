@@ -9,7 +9,7 @@ from PyQt5 import QtWidgets, QtGui, QtCore
 
 from mapqeditorq.gui.editor_ui import Ui_MainWindow
 from mapqeditorq.mqeq_logic import settings
-from mapqeditorq.mqeq_logic.main_mqeq_handler import MainMqeqHandler
+from mapqeditorq.mqeq_logic.main_mqeq_handler import MainMqeqHandler, MqeqError
 from mapqeditorq.gui.tilemap_scene import TilemapScene
 
 
@@ -30,6 +30,15 @@ class MainWindow(QtWidgets.QMainWindow):
         # Connect menubar actions
         self.ui.action_Open_ROM.triggered.connect(lambda: self.open_rom())
         self.ui.action_Save.triggered.connect(lambda: self.save())
+        self.ui.export_blocks_action.triggered.connect(self.export_blocks)
+        self.ui.import_blocks_action.triggered.connect(self.import_blocks)
+        self.ui.export_blocks_behaviour_action.triggered.connect(self.export_blocks_behaviour)
+        self.ui.import_blocks_behaviour_action.triggered.connect(self.import_blocks_behaviour)
+        self.ui.import_map_layer_action.triggered.connect(self.import_map_layer)
+        self.ui.export_map_layer_action.triggered.connect(self.export_map_layer)
+
+        self.ui.menuExport.setEnabled(False)
+        self.ui.menuImport.setEnabled(False)
 
         # Connect main widgets
         self.ui.map_index_ledit.returnPressed.connect(self.load_map)
@@ -73,8 +82,30 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.block_behaviours_ledit.textEdited.connect(self.behaviour_value_modified)
         self.block_behaviours_ledit_font = QtGui.QFont(self.ui.block_behaviours_ledit.font())
 
+        # Setup Tileset editor tab
+        self.ui.palette_combobox2.currentIndexChanged.connect(self.mirrored_palette_combobox)
+
+        self.palette_image_view_scene = TilemapScene(32, clicked_event=self.palette_image_clicked)
+        self.ui.palette_image_view.setScene(self.palette_image_view_scene)
+
+        self.ui.red_spinbox.valueChanged.connect(self.color_edited)
+        self.ui.green_spinbox.valueChanged.connect(self.color_edited)
+        self.ui.blue_spinbox.valueChanged.connect(self.color_edited)
+        self.ui.save_color_button.clicked.connect(self.save_color)
+
+        self.ui.load_pal_from_img_button.clicked.connect(self.load_palette_from_image)
+
+        self.change_tileset_view_scene = TilemapScene(16)
+        self.ui.change_tileset_view.setScene(self.change_tileset_view_scene)
+        self.ui.tileset_num_combobox.currentIndexChanged.connect(self.select_tileset)
+
+        self.ui.export_tileset_button.clicked.connect(self.export_tileset)
+        self.ui.import_tileset_button.clicked.connect(self.import_tileset)
+
         # Palette 1 hurts my eyes...
-        self.ui.palette_combobox.setCurrentIndex(self.handler.INITIAL_PALETTE)
+        initial_palette = self.handler.get_selected_palette()
+        self.ui.palette_combobox.setCurrentIndex(initial_palette)
+        self.ui.palette_combobox2.setCurrentIndex(initial_palette)
         self.ui.palette_combobox.currentIndexChanged.connect(self.selected_palette_changed)
 
         self.ui.flipX_checkbox.clicked.connect(self.print_tile_preview)
@@ -102,12 +133,41 @@ class MainWindow(QtWidgets.QMainWindow):
         result = msgbox.exec()
         return result
 
+    @staticmethod
+    def yes_no_question(title, question):
+        msgbox = QtWidgets.QMessageBox()
+        msgbox.setWindowTitle(title)
+        msgbox.setText(question)
+        msgbox.setIcon(QtWidgets.QMessageBox.Question)
+        msgbox.setStandardButtons(
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+        )
+        msgbox.setDefaultButton(QtWidgets.QMessageBox.No)
+        return msgbox.exec() == QtWidgets.QMessageBox.Yes
+
+    def save_file_dialog(self, title, file_type='All files (*)'):
+        filename, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, title,
+            self.handler.settings.last_opened_path,
+            file_type
+        )
+        return filename
+
+    def open_file_dialog(self, title, file_type='All files (*)'):
+        filename, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, title,
+            self.handler.settings.last_opened_path,
+            file_type
+        )
+        return filename
+
     # Closing events
     def closeEvent(self, event):
-        if not self.close_map_confirm() or not self.handler.close():
-            event.ignore()
-        else:
+        if self.close_map_confirm():
+            self.handler.close()
             event.accept()
+        else:
+            event.ignore()
 
     def close_map_confirm(self):
         if self.handler.are_there_unsaved_changes():
@@ -124,17 +184,12 @@ class MainWindow(QtWidgets.QMainWindow):
     # Menu options
     def open_rom(self, filename=None):
         if filename is None:
-            filename, _ = QtWidgets.QFileDialog.getOpenFileName(self, 'Open ROM file',
-                                                                self.handler.settings.last_opened_path,
-                                                                'GBA ROM (*.gba);;All files (*)')
+            filename = self.open_file_dialog('Open ROM file', 'GBA ROM (*.gba);;All files (*)')
         if filename:
-            self.handler.settings.last_opened_path = os.path.dirname(filename)
-
             self.statusbar_show('Loading Rom...')
-            if self.handler.game.load(filename):
-                # Warning game code doesn't match
-                pass
+            self.handler.load_rom(filename)
             self.statusbar_show('Rom loaded')
+            self.clear_scenes()
             self.ui.centralwidget.setEnabled(True)
             self.ui.tabWidget.setEnabled(False)
 
@@ -148,6 +203,67 @@ class MainWindow(QtWidgets.QMainWindow):
         self.statusbar_show('Saving...')
         self.handler.save_changes()
         self.statusbar_show('Map saved')
+
+    def export_blocks(self):
+        filename = self.save_file_dialog('Export blocks')
+        if filename:
+            self.handler.export_blocks(filename)
+            self.statusbar_show('Blocks exported successfully')
+
+    def import_blocks(self):
+        filename = self.open_file_dialog('Import blocks')
+        if filename:
+            self.handler.import_blocks(filename)
+            self.print_block_preview()
+            self.print_blocks_img()
+            self.print_map()
+            self.statusbar_show('Blocks imported successfully')
+
+    def export_blocks_behaviour(self):
+        filename = self.save_file_dialog('Export blocks behaviour')
+        if filename:
+            self.handler.export_blocks_behaviour(filename)
+            self.statusbar_show('Blocks behaviour exported successfully')
+
+    def import_blocks_behaviour(self):
+        filename = self.open_file_dialog('Import blocks behaviour')
+        if filename:
+            self.handler.import_blocks_behaviour(filename)
+            self.load_behaviour_value()
+            self.statusbar_show('Blocks behaviour imported successfully')
+
+    def export_map_layer(self):
+        filename = self.save_file_dialog('Export map layer')
+        if filename:
+            self.handler.export_map_layer(filename)
+            self.statusbar_show('Map layer exported successfully')
+
+    def import_map_layer(self):
+        filename = self.open_file_dialog('Import map layer')
+        if filename:
+            self.handler.import_map_layer(filename)
+            self.print_map()
+            self.statusbar_show('Map layer imported successfully')
+
+    def import_tileset(self):
+        self.setEnabled(False)
+        filename = self.open_file_dialog('Open Image file', 'All files (*)')
+        if filename:
+            try:
+                self.handler.replace_selected_tileset(filename)
+                self.print_all()
+                self.statusbar_show('Tileset imported successfully')
+            except MqeqError as e:
+                self.error_message('Error importing tileset', str(e))
+        self.setEnabled(True)
+
+    def export_tileset(self):
+        filename = self.save_file_dialog('Save tileset image', 'PNG Image (*.png)')
+        if filename:
+            if not (filename.lower()).endswith('.png'):
+                filename += '.png'
+            self.handler.export_selected_tileset(filename)
+            self.statusbar_show('Tileset exported successfully')
 
     # Load map
     def load_map(self):
@@ -187,7 +303,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.select_layer(0)
         self.load_behaviour_value()
-
+        self.ui.menuImport.setEnabled(True)
+        self.ui.menuExport.setEnabled(True)
         if not self.ui.tabWidget.isEnabled():
             self.ui.tabWidget.setEnabled(True)
         
@@ -197,6 +314,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.print_tilesets()
         self.print_tile_preview()
         self.print_block_preview()
+        self.print_selected_palette()
+        self.print_change_tileset_preview()
 
     def select_layer(self, layer_num):
         self.handler.select_layer(layer_num)
@@ -204,6 +323,18 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.ui.layer1_button.setEnabled(layer_num != 0)
         self.ui.layer2_button.setEnabled(layer_num != 1)
+
+    def clear_scenes(self):
+        self.map_layer_scene.clear()
+        self.layer_blocks_scene.clear()
+
+        self.block_preview_scene.clear()
+        self.tile_preview_scene.clear()
+        for scene in self.tileset_view_scenes:
+            scene.clear()
+
+        self.palette_image_view_scene.clear()
+        self.change_tileset_view_scene.clear()
 
     # Map Layer tab
     def map_clicked(self, event):
@@ -269,13 +400,16 @@ class MainWindow(QtWidgets.QMainWindow):
             tile_img = tile_img.transpose(Image.FLIP_LEFT_RIGHT)
         if self.ui.flipY_checkbox.isChecked():
             tile_img = tile_img.transpose(Image.FLIP_TOP_BOTTOM)
-        h, w = tile_img.size
+        w, h = tile_img.size
         tile_img = tile_img.resize((h * 2, w * 2))
 
         self.tile_preview_scene.set_image(tile_img)
 
     def select_tile(self, tile_num):
         self.handler.select_tile(tile_num)
+        self.update_tile_preview()
+
+    def update_tile_preview(self):
         self.print_tilesets()
         self.print_tile_preview()
         self.ui.selected_tile_ledit.setText(hex(self.handler.get_selected_tile()))
@@ -290,17 +424,25 @@ class MainWindow(QtWidgets.QMainWindow):
     def block_preview_clicked(self, event):
         block_part = self.block_preview_scene.get_clicked_tile(event)
         if block_part != -1:
-            flip_x = self.ui.flipX_checkbox.isChecked()
-            flip_y = self.ui.flipY_checkbox.isChecked()
-            self.handler.paint_block(block_part, flip_x, flip_y)
+            button = event.button()
+            if button == QtCore.Qt.LeftButton:
+                flip_x = self.ui.flipX_checkbox.isChecked()
+                flip_y = self.ui.flipY_checkbox.isChecked()
+                self.handler.paint_block(block_part, flip_x, flip_y)
 
-            self.print_block_preview()
-            self.print_blocks_img()
-            self.print_map()
+                self.print_block_preview()
+                self.print_blocks_img()
+                self.print_map()
+            elif button == QtCore.Qt.RightButton:
+                flip_x, flip_y = self.handler.select_tile_at_block_part(block_part)
+                self.ui.flipX_checkbox.setChecked(flip_x != 0)
+                self.ui.flipY_checkbox.setChecked(flip_y != 0)
+                self.ui.palette_combobox.setCurrentIndex(self.handler.get_selected_palette())
+                self.update_tile_preview()
 
     def print_block_preview(self):
         block_img = self.handler.get_block_image()
-        h, w = block_img.size
+        w, h = block_img.size
         block_img = block_img.resize((h * 2, w * 2))
         self.block_preview_scene.set_image(block_img)
 
@@ -331,9 +473,100 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.block_behaviours_ledit.setFont(self.block_behaviours_ledit_font)
 
     def selected_palette_changed(self):
+        if self.ui.palette_combobox2.currentIndex() != \
+                self.ui.palette_combobox.currentIndex():
+            self.ui.palette_combobox2.setCurrentIndex(
+                self.ui.palette_combobox.currentIndex()
+            )
+
         self.handler.set_selected_palette(self.ui.palette_combobox.currentIndex())
         self.print_tilesets()
         self.print_tile_preview()
+        self.print_selected_palette()
+        self.disable_enable_palette_modification_fields()
+        self.print_change_tileset_preview()
+
+    # Tileset editor tab
+    def mirrored_palette_combobox(self):
+        if self.ui.palette_combobox2.currentIndex() != \
+                self.ui.palette_combobox.currentIndex():
+            self.ui.palette_combobox.setCurrentIndex(
+                self.ui.palette_combobox2.currentIndex()
+            )
+
+    def print_selected_palette(self):
+        self.palette_image_view_scene.set_image(
+            self.handler.get_selected_palette_image()
+        )
+        self.palette_image_view_scene.draw_square_over_tile(
+            self.handler.get_selected_color()
+        )
+        self.load_selected_color_data()
+
+    def palette_image_clicked(self, event):
+        color_num = self.palette_image_view_scene.get_clicked_tile(event)
+        if color_num != -1:
+            self.select_color(color_num)
+
+    def select_color(self, color_num):
+        self.handler.select_color(color_num)
+        self.print_selected_palette()
+
+        if self.ui.save_color_button.isEnabled():
+            self.ui.save_color_button.setEnabled(False)
+
+    def load_selected_color_data(self):
+        r, g, b = self.handler.get_selected_color_rgb_values()
+        self.ui.red_spinbox.setValue(r)
+        self.ui.green_spinbox.setValue(g)
+        self.ui.blue_spinbox.setValue(b)
+        self.ui.save_color_button.setEnabled(False)
+
+    def disable_enable_palette_modification_fields(self):
+        value = self.handler.is_palette_modification_allowed()
+
+        self.ui.load_pal_from_img_button.setEnabled(value)
+        self.ui.palette_color_groupbox.setEnabled(value)
+
+    def load_palette_from_image(self):
+        self.setEnabled(False)
+        filename, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, 'Open Image file',
+            self.handler.settings.last_opened_path,
+            'All files (*)'
+        )
+        if filename:
+            try:
+                self.handler.load_palette_from_image(filename)
+                self.print_all()
+                self.statusbar_show('Palette imported successfully')
+            except MqeqError as e:
+                self.error_message('Error loading pal', str(e))
+        self.setEnabled(True)
+
+    def color_edited(self):
+        if not self.ui.save_color_button.isEnabled():
+            self.ui.save_color_button.setEnabled(True)
+
+    def save_color(self):
+        self.setEnabled(False)
+        r = self.ui.red_spinbox.value()
+        g = self.ui.green_spinbox.value()
+        b = self.ui.blue_spinbox.value()
+        self.handler.modify_selected_color((r, g, b))
+        self.ui.save_color_button.setEnabled(False)
+
+        self.print_all()
+        self.setEnabled(True)
+
+    def print_change_tileset_preview(self):
+        self.change_tileset_view_scene.set_image(
+            self.handler.get_selected_tileset_image()
+        )
+
+    def select_tileset(self):
+        self.handler.select_tileset(self.ui.tileset_num_combobox.currentIndex())
+        self.print_change_tileset_preview()
 
 
 def main():

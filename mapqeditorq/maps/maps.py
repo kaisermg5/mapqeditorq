@@ -5,7 +5,7 @@ from mapqeditorq.game.structure_utils import StructureBase
 from . import common
 from . import blocks
 from .tilesets import Tileset
-from .map_layer import MapLayer
+from .map_layer import MapLayerObjectsCeator
 from .palettes import Palettes
 
 
@@ -34,7 +34,7 @@ class MapHeader(StructureBase):
 
 class Map:
     def __init__(self):
-        self.layers = [MapLayer(), MapLayer()]
+        self.layers = None
         self.index = None
         self.subindex = None
         self.header = None
@@ -68,13 +68,14 @@ class Map:
         self.load_blocks_imgs()
 
         load_data_thread.join()
+        # print('scripts:', hex(game.get_scripts_array_ptr(index, subindex)))
+        # print('warps:', hex(game.get_warps_array_ptr(index, subindex)))
 
     def load_layers(self, game):
-        for i in range(len(self.layers)):
-            self.layers[i].load(game, self.index, self.subindex, i)
+        self.layers = MapLayerObjectsCeator.create_map_layer_list(game, self.index, self.subindex)
 
-    def load_palettes(self, game, palette_header):
-        self.palettes.load(game, palette_header)
+    def load_palettes(self, game, palette_header, header_ptr):
+        self.palettes.load(game, palette_header, header_ptr)
 
     def load_tilesets(self, game):
         self.tilesets = []
@@ -86,14 +87,14 @@ class Map:
         tileset_headers = []
         header = game.read_struct_at(header_ptr, common.MapDataGenericHeader)
         while not header.is_palette_header():
-            tileset_headers.append(header)
+            tileset_headers.append((header, header_ptr))
             header_ptr += header.size()
             header = game.read_struct_at(header_ptr, common.MapDataGenericHeader)
-        self.load_palettes(game, header)
+        self.load_palettes(game, header, header_ptr)
 
-        for header in tileset_headers:
+        for header, header_ptr in tileset_headers:
             tileset = Tileset()
-            tileset.load(game, self.palettes, header)
+            tileset.load(game, self.palettes, header, header_ptr)
             self.tilesets.append(tileset)
 
     def load_blocks_data(self, game):
@@ -126,6 +127,9 @@ class Map:
             ret += tileset.get_full_tileset(pal_num),
         return ret
 
+    def get_tileset_image(self, pal_num, tilset_num):
+        return self.tilesets[tilset_num].get_full_tileset(pal_num)
+
     def get_block_img(self, block_num, layer_num):
         return self.blocks[layer_num].get_block_img(block_num)
 
@@ -145,6 +149,11 @@ class Map:
         for layer in self.layers:
             if layer.was_modified():
                 return True
+        for tileset in self.tilesets:
+            if tileset.was_modified():
+                return True
+        if self.palettes.was_modified():
+            return True
         return False
 
     def set_map_tile(self, layer_num, tile_num, block_num):
@@ -158,6 +167,13 @@ class Map:
             if blocks_obj.was_modified():
                 blocks_obj.save_to_rom(game)
 
+        if self.palettes.was_modified():
+            self.palettes.save_to_rom(game)
+
+        for tileset in self.tilesets:
+            if tileset.was_modified():
+                tileset.save_to_rom(game)
+
     def get_indexes(self):
         return self.index, self.subindex
 
@@ -169,3 +185,45 @@ class Map:
 
     def get_block_num_at(self, layer_num, tile_num):
         return self.layers[layer_num].get_block_num_at(tile_num)
+
+    def change_tileset_image(self, tileset_num, img):
+        self.tilesets[tileset_num].change_image(img)
+        self.redraw_blocks()
+
+    def get_palette_image(self, pal_num):
+        return self.palettes.get_palette_img(pal_num)
+
+    def set_palette(self, palette_num, palette):
+        self.palettes.set_palette(palette_num, palette)
+        self.redraw_blocks()
+
+    def get_color_rgb_values(self, pal_num, color_num):
+        return self.palettes.get_color(pal_num, color_num)
+
+    def modify_color(self, pal_num, color_num, rgb):
+        self.palettes.set_color(pal_num, color_num, rgb)
+        self.redraw_blocks()
+
+    def redraw_blocks(self, layer_num=None):
+        iterable = ((layer_num,), range(2))[layer_num is None]
+        for layer_num in iterable:
+            self.blocks[layer_num].load_imgs(self, layer_num)
+
+    def get_blocks_data(self, layer_num):
+        return self.blocks[layer_num].to_bytes()
+
+    def set_blocks_data(self, layer_num, raw_data):
+        self.blocks[layer_num].load_from_raw(raw_data)
+        self.redraw_blocks(layer_num)
+
+    def get_blocks_behaviour_data(self, layer_num):
+        return self.blocks[layer_num].get_behaviour_data()
+
+    def set_blocks_behaviour_data(self, layer_num, raw_data):
+        self.blocks[layer_num].set_behaviour_data(raw_data)
+
+    def set_layer_data(self, layer_num, raw_data):
+        self.layers[layer_num].load_from_raw(raw_data)
+
+    def get_layer_data(self, layer_num):
+        return self.layers[layer_num].to_bytes()

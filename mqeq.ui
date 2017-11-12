@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>900</width>
-    <height>692</height>
+    <height>701</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -233,6 +233,28 @@
         <string>Blocks Editor</string>
        </attribute>
        <layout class="QGridLayout" name="gridLayout_5">
+        <item row="1" column="1">
+         <widget class="QGraphicsView" name="tileset_view_1">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="MinimumExpanding" vsizetype="MinimumExpanding">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>270</width>
+            <height>400</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>288</width>
+            <height>400</height>
+           </size>
+          </property>
+         </widget>
+        </item>
         <item row="0" column="0" rowspan="3">
          <widget class="QGraphicsView" name="blocks_view_2">
           <property name="sizePolicy">
@@ -421,28 +443,6 @@
           </item>
          </layout>
         </item>
-        <item row="1" column="2">
-         <widget class="QGraphicsView" name="tileset_view_2">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="MinimumExpanding" vsizetype="MinimumExpanding">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>270</width>
-            <height>400</height>
-           </size>
-          </property>
-          <property name="maximumSize">
-           <size>
-            <width>288</width>
-            <height>400</height>
-           </size>
-          </property>
-         </widget>
-        </item>
         <item row="0" column="1">
          <layout class="QGridLayout" name="gridLayout_4">
           <item row="1" column="0">
@@ -545,28 +545,6 @@
           </item>
          </layout>
         </item>
-        <item row="1" column="1">
-         <widget class="QGraphicsView" name="tileset_view_1">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="MinimumExpanding" vsizetype="MinimumExpanding">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>270</width>
-            <height>400</height>
-           </size>
-          </property>
-          <property name="maximumSize">
-           <size>
-            <width>288</width>
-            <height>400</height>
-           </size>
-          </property>
-         </widget>
-        </item>
         <item row="0" column="3" rowspan="2">
          <spacer name="horizontalSpacer_4">
           <property name="orientation">
@@ -596,6 +574,390 @@
           </property>
          </spacer>
         </item>
+        <item row="1" column="2">
+         <widget class="QGraphicsView" name="tileset_view_2">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="MinimumExpanding" vsizetype="MinimumExpanding">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>270</width>
+            <height>400</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>288</width>
+            <height>400</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="tab">
+       <attribute name="title">
+        <string>Tileset editor</string>
+       </attribute>
+       <layout class="QGridLayout" name="gridLayout_8">
+        <item row="2" column="0">
+         <spacer name="verticalSpacer_4">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item row="0" column="2">
+         <spacer name="horizontalSpacer_5">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item row="0" column="0">
+         <widget class="QGroupBox" name="groupBox">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="title">
+           <string>Palette</string>
+          </property>
+          <layout class="QGridLayout" name="gridLayout_7">
+           <item row="0" column="0">
+            <widget class="QLabel" name="label_7">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="text">
+              <string>Palette:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0" colspan="2">
+            <widget class="QPushButton" name="load_pal_from_img_button">
+             <property name="text">
+              <string>Load from image</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QComboBox" name="palette_combobox2">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>60</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <item>
+              <property name="text">
+               <string>1</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>2</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>3</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>4</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>5</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>6</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>7</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>8</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>9</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>10</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>11</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>12</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>13</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>14</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>15</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>16</string>
+              </property>
+             </item>
+            </widget>
+           </item>
+           <item row="0" column="2" rowspan="2">
+            <widget class="QGraphicsView" name="palette_image_view">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>272</width>
+               <height>80</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>272</width>
+               <height>80</height>
+              </size>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="3" rowspan="2">
+            <widget class="QGroupBox" name="palette_color_groupbox">
+             <property name="title">
+              <string>Color</string>
+             </property>
+             <layout class="QGridLayout" name="gridLayout_9">
+              <item row="2" column="1">
+               <widget class="QSpinBox" name="blue_spinbox">
+                <property name="maximum">
+                 <number>255</number>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="label_9">
+                <property name="text">
+                 <string>G:</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QSpinBox" name="red_spinbox">
+                <property name="maximum">
+                 <number>255</number>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="0">
+               <widget class="QLabel" name="label_8">
+                <property name="text">
+                 <string>R:</string>
+                </property>
+               </widget>
+              </item>
+              <item row="2" column="0">
+               <widget class="QLabel" name="label_10">
+                <property name="text">
+                 <string>B:</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <widget class="QSpinBox" name="green_spinbox">
+                <property name="maximum">
+                 <number>255</number>
+                </property>
+               </widget>
+              </item>
+              <item row="2" column="2">
+               <widget class="QPushButton" name="save_color_button">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
+                <property name="maximumSize">
+                 <size>
+                  <width>50</width>
+                  <height>16777215</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string>Save</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QGroupBox" name="groupBox_3">
+          <property name="title">
+           <string>Tileset</string>
+          </property>
+          <layout class="QGridLayout" name="gridLayout_10">
+           <item row="0" column="1">
+            <widget class="QLabel" name="label_13">
+             <property name="text">
+              <string>Tileset:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="3">
+            <widget class="QPushButton" name="export_tileset_button">
+             <property name="text">
+              <string>Export tileset</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="3">
+            <spacer name="verticalSpacer_5">
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>20</width>
+               <height>40</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item row="2" column="3">
+            <widget class="QPushButton" name="import_tileset_button">
+             <property name="text">
+              <string>Import tileset</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="2">
+            <widget class="QComboBox" name="tileset_num_combobox">
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>60</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <item>
+              <property name="text">
+               <string>1</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>2</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>3</string>
+              </property>
+             </item>
+            </widget>
+           </item>
+           <item row="0" column="3">
+            <spacer name="horizontalSpacer_8">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>40</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item row="0" column="0" rowspan="5">
+            <widget class="QGraphicsView" name="change_tileset_view">
+             <property name="minimumSize">
+              <size>
+               <width>270</width>
+               <height>250</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>288</width>
+               <height>16777215</height>
+              </size>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
        </layout>
       </widget>
      </widget>
@@ -618,7 +980,31 @@
     <addaction name="action_Open_ROM"/>
     <addaction name="action_Save"/>
    </widget>
+   <widget class="QMenu" name="menuEdit">
+    <property name="title">
+     <string>Edit</string>
+    </property>
+    <widget class="QMenu" name="menuExport">
+     <property name="title">
+      <string>Export</string>
+     </property>
+     <addaction name="export_map_layer_action"/>
+     <addaction name="export_blocks_action"/>
+     <addaction name="export_blocks_behaviour_action"/>
+    </widget>
+    <widget class="QMenu" name="menuImport">
+     <property name="title">
+      <string>Import</string>
+     </property>
+     <addaction name="import_map_layer_action"/>
+     <addaction name="import_blocks_action"/>
+     <addaction name="import_blocks_behaviour_action"/>
+    </widget>
+    <addaction name="menuImport"/>
+    <addaction name="menuExport"/>
+   </widget>
    <addaction name="menuFile"/>
+   <addaction name="menuEdit"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <action name="action_Open_ROM">
@@ -662,7 +1048,69 @@
     <string>Save</string>
    </property>
   </action>
+  <action name="export_map_layer_action">
+   <property name="text">
+    <string>Map layer</string>
+   </property>
+  </action>
+  <action name="export_blocks_action">
+   <property name="text">
+    <string>Blocks</string>
+   </property>
+  </action>
+  <action name="export_blocks_behaviour_action">
+   <property name="text">
+    <string>Blocks behaviour</string>
+   </property>
+  </action>
+  <action name="import_map_layer_action">
+   <property name="text">
+    <string>Map layer</string>
+   </property>
+  </action>
+  <action name="import_blocks_action">
+   <property name="text">
+    <string>Blocks</string>
+   </property>
+  </action>
+  <action name="import_blocks_behaviour_action">
+   <property name="text">
+    <string>Blocks behaviour</string>
+   </property>
+  </action>
  </widget>
+ <tabstops>
+  <tabstop>tabWidget</tabstop>
+  <tabstop>map_index_ledit</tabstop>
+  <tabstop>map_subindex_ledit</tabstop>
+  <tabstop>loadmap_button</tabstop>
+  <tabstop>layer1_button</tabstop>
+  <tabstop>layer2_button</tabstop>
+  <tabstop>selected_block_ledit</tabstop>
+  <tabstop>map_layer_view</tabstop>
+  <tabstop>blocks_view</tabstop>
+  <tabstop>blocks_view_2</tabstop>
+  <tabstop>selected_block_view</tabstop>
+  <tabstop>selected_tile_view</tabstop>
+  <tabstop>tileset_view_1</tabstop>
+  <tabstop>tileset_view_2</tabstop>
+  <tabstop>flipX_checkbox</tabstop>
+  <tabstop>flipY_checkbox</tabstop>
+  <tabstop>block_behaviours_ledit</tabstop>
+  <tabstop>palette_combobox</tabstop>
+  <tabstop>selected_tile_ledit</tabstop>
+  <tabstop>palette_combobox2</tabstop>
+  <tabstop>palette_image_view</tabstop>
+  <tabstop>load_pal_from_img_button</tabstop>
+  <tabstop>red_spinbox</tabstop>
+  <tabstop>green_spinbox</tabstop>
+  <tabstop>blue_spinbox</tabstop>
+  <tabstop>save_color_button</tabstop>
+  <tabstop>change_tileset_view</tabstop>
+  <tabstop>tileset_num_combobox</tabstop>
+  <tabstop>import_tileset_button</tabstop>
+  <tabstop>export_tileset_button</tabstop>
+ </tabstops>
  <resources/>
  <connections/>
 </ui>

@@ -52,6 +52,20 @@ def draw_img_from_tileset(tileset, tiles_wide, img_mode='RGB'):
     return img
 
 
+def crop_img_in_tiles(img):
+    w, h = img.size
+    tiles_wide = w // 8
+    tiles_high = h // 8
+    tiles = [None] * (tiles_wide * tiles_high)
+
+    c = 0
+    for y in range(0, h, 8):
+        for x in range(0, w, 8):
+            tiles[c] = img.crop((x, y, x + 8, y + 8))
+            c += 1
+    return tiles
+
+
 class MapDataGenericHeader(StructureBase):
     FORMAT = (
         ('masked_data_ptr', 'u32'),     # If this is a palette header, it contains

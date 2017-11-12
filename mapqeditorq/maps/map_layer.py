@@ -4,6 +4,37 @@ from PIL import Image
 from . import common
 
 
+class MapLayerObjectsCeator:
+    POINTER_IDENTIFIER = {
+        # RAM offset: layer_num
+        0x2025eb4: 0,
+        0x200b654: 1,
+    }
+
+    @classmethod
+    def create_map_layer_list(cls, game, map_index, map_subindex):
+        map_layers = [MapLayer(), MapLayer()]
+
+        i = 0
+        while True:
+            header_ptr = game.get_map_layer_header_pointer(map_index, map_subindex, i)
+            header = game.read_struct_at(header_ptr, common.MapDataGenericHeader)
+
+            # TODO: find out what the other data is...
+            # check map 0x3, 0x1
+            if header.uncompress_address in cls.POINTER_IDENTIFIER:
+                layer_num = cls.POINTER_IDENTIFIER[header.uncompress_address]
+                map_layers[layer_num].load(game, header, header_ptr)
+            else:
+                print(header)
+
+            if header.is_final():
+                break
+            i += 1
+
+        return map_layers
+
+
 class MapLayer:
     def __init__(self):
         self.header_ptr = None
@@ -13,15 +44,20 @@ class MapLayer:
 
         self.modified = False
 
-    def load(self, game, map_index, map_subindex, layer_num):
-        self.header_ptr = game.get_map_layer_header_pointer(map_index, map_subindex, layer_num)
-        self.header = game.read_struct_at(self.header_ptr, common.MapDataGenericHeader)
+    def load(self, game, header, header_ptr):
+        self.header_ptr = header_ptr
+        self.header = header
 
         self.load_data(game)
 
     def load_data(self, game):
         layer_data_ptr = self.header.get_compressed_data_ptr()
         raw_data, self.original_compressed_size = game.read_compressed(layer_data_ptr)
+        self.load_from_raw(raw_data)
+
+    def load_from_raw(self, raw_data):
+        if self.data is not None and not self.was_modified():
+            self.modified = True
         data_size = len(raw_data) // 2
         self.data = [None] * data_size
 

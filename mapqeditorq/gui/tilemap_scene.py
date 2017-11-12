@@ -1,6 +1,6 @@
 
 from PyQt5 import QtWidgets, QtGui, QtCore
-from PIL import ImageQt, Image
+from PIL import ImageQt
 
 from mapqeditorq.gui import qmapview
 
@@ -61,3 +61,7 @@ class TilemapScene(QtWidgets.QGraphicsScene):
         drawer.setPen(color)
         drawer.drawRect(x, y, self.tile_size, self.tile_size)
         drawer.end()
+
+    def clear(self):
+        self.pixmap = None
+        super(TilemapScene, self).clear()

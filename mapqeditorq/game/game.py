@@ -13,8 +13,8 @@ class Game:
     MAP_LAYER_HEADER_TABLE = 0x107988
     BLOCKS_TABLE = 0x10309c
     unk_table2 = 0xb755c
-    unk_table3 = 0x13a7f0
-    unk_table4 = 0xd50fc
+    WARPS_TABLE = 0x13a7f0
+    SCRIPTs_TABLE = 0xd50fc
 
     PALETTE_HEADER2_TABLE = 0xff850
     PALETTE_TABLE = 0x5a2e80
@@ -54,7 +54,9 @@ class Game:
     def read_pointer(self, address):
         return self.pointer_unmask(self.read_u32(address))
 
-    def find_free_space(self, size, start_address=0):
+    def find_free_space(self, size, start_address=0, aligned=True):
+        if aligned:
+            size += 3
         found_free_space = False
         while not found_free_space:
             address = self.rom_contents_buffer.find(b'\xff' * size, start_address)
@@ -67,6 +69,8 @@ class Game:
                 found_free_space = True
             else:
                 self.rom_contents_buffer[address:address + size] = actual_contents
+        if aligned:
+            address += (0, 3, 2, 1)[address % 4]
         return address
 
     def write(self, address, data):
@@ -146,4 +150,10 @@ class Game:
         tileset_subtable = self.read_pointer(self.TILESETS_TABLE + map_index * 4)
         return self.read_pointer(tileset_subtable + tileset_index * 4)
 
+    def get_scripts_array_ptr(self, map_index, map_subindex):
+        sub_table_ptr = self.read_pointer(self.SCRIPTs_TABLE + map_index * 4)
+        return self.read_pointer(sub_table_ptr + map_subindex * 4)
 
+    def get_warps_array_ptr(self, map_index, map_subindex):
+        sub_table_ptr = self.read_pointer(self.WARPS_TABLE + map_index * 4)
+        return self.read_pointer(sub_table_ptr + map_subindex * 4)
