@@ -5,43 +5,7 @@ from PIL import Image
 from . import common
 
 
-class BlocksObjectsCreator:
-    POINTER_IDENTIFIER = {
-        # RAM offset: (is_block_img_data, layer_num)
-        #               if it is not data from the image,
-        #               it is data from the behaviours
-        0x202ceb4: (True, 0),
-        0x2012654: (True, 1),
-        0x202aeb4: (False, 0),
-        0x2010654: (False, 1),
-    }
-
-    @classmethod
-    def header_type_identifier(cls, header):
-        return cls.POINTER_IDENTIFIER[header.uncompress_address]
-
-    @classmethod
-    def create_block_list(cls, game, map_index, layer_count=2):
-        blocks = [Blocks() for i in range(layer_count)]
-
-        i = 0
-        while True:
-            header_ptr = game.get_blocks_header_pointer(map_index, i)
-            header = game.read_struct_at(header_ptr, common.MapDataGenericHeader)
-            (is_block_img_data, layer_num) = cls.header_type_identifier(header)
-            if is_block_img_data:
-                blocks[layer_num].load(game, header, header_ptr)
-            else:
-                blocks[layer_num].load_behaviours(game, header, header_ptr)
-
-            if header.is_final():
-                break
-            i += 1
-
-        return blocks
-
-
-class Blocks:
+class Blocks(common.MapDataObjectBase):
     POSITIONS = (
         (0, 0),
         (8, 0),
@@ -50,10 +14,7 @@ class Blocks:
     )
 
     def __init__(self):
-        self.header_ptr = None
-        self.header = None
-        self.original_compressed_size = None
-
+        super().__init__()
         self.data = None
         self.imgs = None
         self.amount = None
@@ -62,25 +23,13 @@ class Blocks:
 
         self.modified = False
 
-    def load(self, game, header, header_ptr):
-        """self.header_ptr = game.get_blocks_header_pointer(map_index, blocks_index)
-        self.header = game.read_struct_at(self.header_ptr, common.MapDataGenericHeader)"""
-        self.header_ptr = header_ptr
-        self.header = header
-        self.load_data(game)
-
-    def load_data(self, game):
-        data_ptr = self.header.get_compressed_data_ptr()
-        raw_data, self.original_compressed_size = game.read_compressed(data_ptr)
-        self.load_from_raw(raw_data)
-
-    def load_from_raw(self, raw_data):
+    def set_data(self, data):
         if self.data is not None and not self.was_modified():
             self.modified = True
-        self.amount = int(ceil(len(raw_data) / 8))
+        self.amount = int(ceil(len(data) / 8))
         self.data = [None] * self.amount
         for i in range(self.amount):
-            block_raw_data = raw_data[i * 8:(i + 1) * 8]
+            block_raw_data = data[i * 8:(i + 1) * 8]
             block_data = [None, None, None, None]
             for j in range(4):
                 num = int.from_bytes(block_raw_data[j * 2:(j + 1) * 2], 'little')
@@ -91,8 +40,8 @@ class Blocks:
                 block_data[j] = [tile_num, flip_x, flip_y, palette]
             self.data[i] = block_data
 
-    def load_behaviours(self, game, header, header_ptr):
-        self.behaviours.load(game, header, header_ptr)
+    def get_behaviours_object(self):
+        return self.behaviours
 
     def load_imgs(self, map_object, layer_num):
         self.imgs = [None] * self.amount
@@ -141,6 +90,9 @@ class Blocks:
             return self.behaviours.was_modified()
         return True
 
+    def set_modified(self, value):
+        self.modified = value
+
     def to_bytes(self):
         raw_data = b''
         for block_data in self.data:
@@ -152,27 +104,6 @@ class Blocks:
             raw_data += block_raw_data
         return raw_data
 
-    def save_to_rom(self, game):
-        if self.modified:
-            data = self.to_bytes()
-            old_offset = self.header.get_compressed_data_ptr()
-            new_offset, self.original_compressed_size = game.alloc_modified_data(
-                data,
-                self.original_compressed_size,
-                old_offset,
-                compressed=True,
-                start_address=common.MAPDATA_KEY
-            )
-
-            if old_offset != new_offset:
-                self.header.set_compressed_data_ptr(new_offset)
-                game.write(self.header_ptr, self.header.to_bytes())
-
-            self.modified = False
-
-        if self.behaviours.was_modified():
-            self.behaviours.save_to_rom(game)
-
     def is_final(self):
         return self.header.is_final()
 
@@ -180,59 +111,30 @@ class Blocks:
         return self.behaviours.get_data(block_num)
 
     def set_block_behaviours(self, block_num, value):
-        self.behaviours.set_data(block_num, value)
+        self.behaviours.set_block_behaviour(block_num, value)
 
     def get_behaviour_data(self):
         return self.behaviours.to_bytes()
 
     def set_behaviour_data(self, raw_data):
-        self.behaviours.load_from_raw(raw_data)
+        self.behaviours.load(raw_data)
 
 
-class BlocksBehaviour:
+class BlocksBehaviour(common.MapDataObjectBase):
     def __init__(self):
-        self.header = None
-        self.header_ptr = None
+        super().__init__()
         self.data = None
-        self.original_compressed_size = None
         self.modified = False
 
-    def load(self, game, header, header_ptr):
-        self.header = header
-        self.header_ptr = header_ptr
-        raw_data, self.original_compressed_size = game.read_compressed(self.header.get_compressed_data_ptr())
-        self.load_from_raw(raw_data)
-
-    def load_from_raw(self, raw_data):
+    def set_data(self, data):
         if self.data is not None and not self.was_modified():
             self.modified = True
-            amount = len(raw_data) // 2
+            amount = len(data) // 2
         else:
             amount = self.header.get_uncompressed_size() // 2
         self.data = [None] * amount
         for i in range(amount):
-            self.data[i] = int.from_bytes(raw_data[2 * i:2 * i + 2], 'little')
-
-    def save_to_rom(self, game):
-        if self.was_modified():
-            data = self.to_bytes()
-            old_offset = self.header.get_compressed_data_ptr()
-            new_offset, self.original_compressed_size = game.alloc_modified_data(
-                data,
-                self.original_compressed_size,
-                old_offset,
-                compressed=True,
-                start_address=common.MAPDATA_KEY
-            )
-            print(self.header)
-            if old_offset != new_offset:
-                print('repointed')
-                print(hex(old_offset), hex(new_offset))
-                self.header.set_compressed_data_ptr(new_offset)
-                game.write(self.header_ptr, self.header.to_bytes())
-                print(self.header)
-
-            self.modified = False
+            self.data[i] = int.from_bytes(data[2 * i:2 * i + 2], 'little')
 
     def to_bytes(self):
         data = b''
@@ -243,7 +145,10 @@ class BlocksBehaviour:
     def was_modified(self):
         return self.modified
 
-    def set_data(self, block_num, value):
+    def set_modified(self, value):
+        self.modified = value
+
+    def set_block_behaviour(self, block_num, value):
         if value != self.data[block_num]:
             self.data[block_num] = value
             if not self.modified:

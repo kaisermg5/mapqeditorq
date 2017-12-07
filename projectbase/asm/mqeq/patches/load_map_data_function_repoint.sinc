@@ -1,0 +1,7 @@
+
+
+.org (vanilla_load_map_data & 0xFFFFFFFE)
+ldr r1, =mqeq_custom_load_map_data|1
+bx r1
+
+.pool

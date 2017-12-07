@@ -1,24 +1,25 @@
 
-import threading
 
-from mapqeditorq.game.structure_utils import StructureBase
-from . import common
-from . import blocks
-from .tilesets import Tileset
-from .map_layer import MapLayerObjectsCeator
+from ..mqeq_logic.thread_utils import ExceptionRaisingThread
+from ..mqeq_logic.parsers import ParseableStructBase
 from .palettes import Palettes
 
 
-class MapHeader(StructureBase):
+class InvalidMap(Exception):
+    pass
+
+
+class MapHeader(ParseableStructBase):
     FORMAT = (
-        ('unk1', 's16'),  # If the first one is equal to -1
-        ('unk2', 'u16'),
-        ('tiles_wide', 'u16'),
-        ('tiles_high', 'u16'),
-        ('tileset_subindex', 'u16'),  # Must be less than 0xffff
+            ('unk1', 's16'),  # If the first one is equal to -1 it doesn't load the map
+            ('unk2', 'u16'),
+            ('tiles_wide', 'u16'),
+            ('tiles_high', 'u16'),
+            ('tileset_subindex', 'u16'),  # Must be less than 0xffff
     )
 
     def __init__(self):
+        super().__init__()
         self.unk1 = None
         self.unk2 = None
         self.tiles_high = None
@@ -40,68 +41,53 @@ class Map:
         self.header = None
 
         self.palettes = Palettes()
-
         self.tilesets = None
-
         self.blocks = None
+        self.warps = None
 
-    def load(self, index, subindex, game):
+    def load(self, index, subindex, project):
         self.index = index
         self.subindex = subindex
 
-        load_data_thread = threading.Thread(target=self.load_layers, args=(game,))
-        load_data_thread.start()
-
-        header_data_ptr = game.get_map_header_pointer(index, subindex)
-        if header_data_ptr < 0:
-            raise Exception('This map does not exist.')
-        self.header = game.read_struct_at(header_data_ptr, MapHeader)
+        self.header = project.get_map_header(self.index, self.subindex)
         if self.header.tiles_wide <= 0 or self.header.tiles_high <= 0:
-            raise Exception('Not a valid map')
-
-        load_tilesets_thread = threading.Thread(target=self.load_tilesets, args=(game,))
+            raise InvalidMap(
+                'Wrong map size. tiles wide: {0}, tiles high: {1}'.format(self.header.tiles_wide,
+                                                                          self.header.tiles_high)
+            )
+        # FIXME: remove game usage
+        load_data_thread = ExceptionRaisingThread(target=self.load_layers, args=(project,))
+        load_data_thread.start()
+        load_tilesets_thread = ExceptionRaisingThread(target=self.load_tilesets_and_palettes, args=(project,))
         load_tilesets_thread.start()
 
-        self.load_blocks_data(game)
-
+        self.load_blocks_data(project)
         load_tilesets_thread.join()
+        load_warps_thread = ExceptionRaisingThread(target=self.load_warps, args=(project,))
+        load_warps_thread.start()
         self.load_blocks_imgs()
 
         load_data_thread.join()
-        # print('scripts:', hex(game.get_scripts_array_ptr(index, subindex)))
-        # print('warps:', hex(game.get_warps_array_ptr(index, subindex)))
+        load_warps_thread.join()
+        print('scripts:', hex(project.game.get_scripts_array_ptr(index, subindex)))
+        print('warps:', hex(project.game.get_warps_array_ptr(index, subindex)))
 
-    def load_layers(self, game):
-        self.layers = MapLayerObjectsCeator.create_map_layer_list(game, self.index, self.subindex)
+    def load_layers(self, project):
+        self.layers = project.get_map_layers(self.index, self.subindex)
 
-    def load_palettes(self, game, palette_header, header_ptr):
-        self.palettes.load(game, palette_header, header_ptr)
+    def load_warps(self, project):
+        self.warps = project.get_warps(self.index, self.subindex)
 
-    def load_tilesets(self, game):
-        self.tilesets = []
-
-        header_ptr = game.get_tilesets_and_palette_headers_array_ptr(
-            self.index, self.header.tileset_subindex
+    def load_tilesets_and_palettes(self, project):
+        self.tilesets = project.get_tileset_load_palettes(
+            self.index, self.header.tileset_subindex, self.palettes
         )
 
-        tileset_headers = []
-        header = game.read_struct_at(header_ptr, common.MapDataGenericHeader)
-        while not header.is_palette_header():
-            tileset_headers.append((header, header_ptr))
-            header_ptr += header.size()
-            header = game.read_struct_at(header_ptr, common.MapDataGenericHeader)
-        self.load_palettes(game, header, header_ptr)
-
-        for header, header_ptr in tileset_headers:
-            tileset = Tileset()
-            tileset.load(game, self.palettes, header, header_ptr)
-            self.tilesets.append(tileset)
-
-    def load_blocks_data(self, game):
-        self.blocks = blocks.BlocksObjectsCreator.create_block_list(game, self.index)
+    def load_blocks_data(self, project):
+        self.blocks = project.get_map_blocks(self.index)
 
     def load_blocks_imgs(self):
-        load_layer2_imgs_th = threading.Thread(target=self.blocks[1].load_imgs, args=(self, 1))
+        load_layer2_imgs_th = ExceptionRaisingThread(target=self.blocks[1].load_imgs, args=(self, 1))
         load_layer2_imgs_th.start()
 
         self.blocks[0].load_imgs(self, 0)

@@ -7,18 +7,19 @@ import time
 from PIL import Image
 from PyQt5 import QtWidgets, QtGui, QtCore
 
-from mapqeditorq.gui.editor_ui import Ui_MainWindow
-from mapqeditorq.mqeq_logic import settings
-from mapqeditorq.mqeq_logic.main_mqeq_handler import MainMqeqHandler, MqeqError
-from mapqeditorq.gui.tilemap_scene import TilemapScene
+from .editor_ui import Ui_MainWindow
+from .new_project_dialog import NewProjectDialog
+from ..mqeq_logic import common
+from ..mqeq_logic.main_mqeq_handler import MainMqeqHandler
+from .tilemap_scene import TilemapScene
 
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self):
+    def __init__(self, filename=None):
         # Setup Window
         QtWidgets.QMainWindow.__init__(self)
         icon = QtGui.QIcon()
-        icon.addPixmap(QtGui.QPixmap(os.path.join(settings.EDITOR_DIRECTORY, 'resources/mqeq-icon.ico'))
+        icon.addPixmap(QtGui.QPixmap(os.path.join(common.EDITOR_DIRECTORY, 'resources/mqeq-icon.ico'))
                        , QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.setWindowIcon(icon)
         self.ui = Ui_MainWindow()
@@ -28,14 +29,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.handler = MainMqeqHandler(self)
 
         # Connect menubar actions
-        self.ui.action_Open_ROM.triggered.connect(lambda: self.open_rom())
-        self.ui.action_Save.triggered.connect(lambda: self.save())
+        self.ui.action_New_Project.triggered.connect(self.new_project)
+        self.ui.action_Open_Project.triggered.connect(lambda: self.open_project())
+        self.ui.action_Save.triggered.connect(self.save)
         self.ui.export_blocks_action.triggered.connect(self.export_blocks)
         self.ui.import_blocks_action.triggered.connect(self.import_blocks)
         self.ui.export_blocks_behaviour_action.triggered.connect(self.export_blocks_behaviour)
         self.ui.import_blocks_behaviour_action.triggered.connect(self.import_blocks_behaviour)
         self.ui.import_map_layer_action.triggered.connect(self.import_map_layer)
         self.ui.export_map_layer_action.triggered.connect(self.export_map_layer)
+        self.ui.actionMake.triggered.connect(self.make_project)
+        self.ui.actionClean.triggered.connect(self.clean_project)
 
         self.ui.menuExport.setEnabled(False)
         self.ui.menuImport.setEnabled(False)
@@ -113,6 +117,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.ui.selected_tile_ledit.returnPressed.connect(self.direct_tile_selection)
 
+
+        if filename is not None:
+            self.open_project(filename)
+
     # Gui utils
     def statusbar_show(self, message):
         self.ui.statusbar.showMessage(message)
@@ -182,20 +190,28 @@ class MainWindow(QtWidgets.QMainWindow):
         return True
 
     # Menu options
-    def open_rom(self, filename=None):
+    def new_project(self):
+        d = NewProjectDialog(self.handler)
+        d.exec()
+        d.deleteLater()
+        if self.handler.is_project_opened():
+            self.project_opened_prepare_gui()
+
+    def open_project(self, filename=None):
         if filename is None:
-            filename = self.open_file_dialog('Open ROM file', 'GBA ROM (*.gba);;All files (*)')
+            filename = self.open_file_dialog('Open Project', 'BZ Project (*.bzproj)')
         if filename:
-            self.statusbar_show('Loading Rom...')
-            self.handler.load_rom(filename)
-            self.statusbar_show('Rom loaded')
-            self.clear_scenes()
-            self.ui.centralwidget.setEnabled(True)
-            self.ui.tabWidget.setEnabled(False)
+            self.handler.load_project(filename)
+            self.project_opened_prepare_gui()
+
+    def project_opened_prepare_gui(self):
+        self.clear_scenes()
+        self.ui.centralwidget.setEnabled(True)
+        self.ui.tabWidget.setEnabled(False)
 
     def save(self):
-        if not self.handler.game.loaded():
-            self.statusbar_show('Game not loaded')
+        if not self.handler.is_project_opened():
+            self.statusbar_show('No project opened')
             return
         elif not self.handler.are_there_unsaved_changes():
             self.statusbar_show('No changes to save')
@@ -253,7 +269,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.handler.replace_selected_tileset(filename)
                 self.print_all()
                 self.statusbar_show('Tileset imported successfully')
-            except MqeqError as e:
+            except common.MqeqError as e:
                 self.error_message('Error importing tileset', str(e))
         self.setEnabled(True)
 
@@ -264,6 +280,18 @@ class MainWindow(QtWidgets.QMainWindow):
                 filename += '.png'
             self.handler.export_selected_tileset(filename)
             self.statusbar_show('Tileset exported successfully')
+
+    def make_project(self):
+        try:
+            self.handler.make_project()
+        except Exception as e:
+            self.error_message(type(e).__name__, str(e))
+
+    def clean_project(self):
+        try:
+            self.handler.clean_project()
+        except Exception as e:
+            self.error_message(type(e).__name__, str(e))
 
     # Load map
     def load_map(self):
@@ -540,7 +568,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.handler.load_palette_from_image(filename)
                 self.print_all()
                 self.statusbar_show('Palette imported successfully')
-            except MqeqError as e:
+            except common.MqeqError as e:
                 self.error_message('Error loading pal', str(e))
         self.setEnabled(True)
 

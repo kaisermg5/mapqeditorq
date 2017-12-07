@@ -1,28 +1,27 @@
 
 import os.path
 
-from mapqeditorq.game import gba_image
-from mapqeditorq.game.game import Game
-from mapqeditorq.maps.maps import Map
+from ..gui.console_dialog import ConsoleDialog
+from ..game import gba_image
+from .bzproject import BzProj
 from . import settings
+from . import common
+from .subprocess_reader import SubprocessReader
 
 from PIL import Image
-
-TILESET_MAX_SIZE = 512
-
-
-class MqeqError(Exception):
-    pass
+import subprocess
 
 
 class MainMqeqHandler:
+    LAZY_PEOPLE_FLAG = False
+
     def __init__(self, gui):
         self.gui = gui
 
         self.settings = settings.UserSettings.load()
 
         # Define main attributes
-        self.game = None
+        self.project = None
         self.loaded_map = None
         self.selected_tile = 0
         self.selected_block = 0
@@ -31,22 +30,51 @@ class MainMqeqHandler:
         self.selected_color = 0
         self.selected_tileset = 0
 
+        # For those windows users who don't want to install the dependencies
+        if self.LAZY_PEOPLE_FLAG:
+            self.add_windows_tools_to_path()
+
+    def add_windows_tools_to_path(self):
+        tools_path = os.path.join(
+            common.EDITOR_DIRECTORY, 'windows_tools'
+        )
+        os.environ['Path'] = os.path.pathsep.join(
+            [os.environ['Path'], common.EDITOR_DIRECTORY, tools_path]
+        )
+
     def save_settings(self):
         self.settings.save()
 
-    def load_rom(self, filename):
-        self.game = Game()
+    def new_project(self, rom_filename, project_dir, project_name):
+        self.project = BzProj()
+        self.project.create(rom_filename, project_dir, project_name)
+
+    def load_project(self, filename):
+        self.project = BzProj()
         self.loaded_map = None
         self.settings.last_opened_path = os.path.dirname(filename)
 
-        if self.game.load(filename):
-            # Warning game code doesn't match
-            pass
+        self.project.load(filename)
+
+    def make_project(self):
+        reader = SubprocessReader(['make'])
+        d = ConsoleDialog(reader)
+        d.exec()
+        d.deleteLater()
+
+    def clean_project(self):
+        reader = SubprocessReader(['make', 'clean'])
+        d = ConsoleDialog(reader)
+        d.exec()
+        d.deleteLater()
+
+    def is_project_opened(self):
+        return self.project is not None
 
     def close(self):
         self.save_settings()
-        if self.game is not None:
-            self.game.close()
+        if self.project is not None:
+            self.project.close()
 
     def get_selected_block(self):
         return self.selected_block
@@ -58,13 +86,13 @@ class MainMqeqHandler:
         return self.loaded_map.set_block_behaviours(self.selected_layer, self.selected_block, value)
 
     def get_adjusted_selected_tile(self):
-        return self.selected_tile - (0, TILESET_MAX_SIZE)[self.get_selected_tile_tileset()]
+        return self.selected_tile - (0, common.TILESET_MAX_SIZE)[self.get_selected_tile_tileset()]
 
     def get_selected_tile(self):
         return self.selected_tile
 
     def get_selected_tile_tileset(self):
-        return self.selected_tile >= TILESET_MAX_SIZE
+        return self.selected_tile >= common.TILESET_MAX_SIZE
 
     def select_block(self, block_num):
         if block_num > 0xffff:
@@ -86,12 +114,10 @@ class MainMqeqHandler:
         return self.loaded_map is not None and self.loaded_map.get_indexes() == (index, subindex)
 
     def load_map(self, index, subindex):
-        new_loaded_map = Map()
-        new_loaded_map.load(index, subindex, self.game)
-        self.loaded_map = new_loaded_map
+        self.loaded_map = self.project.load_map(index, subindex)
 
     def save_changes(self):
-        self.loaded_map.save_to_rom(self.game)
+        self.project.save_changes()
 
     def paint_map_tile(self, tile_num):
         self.loaded_map.set_map_tile(self.selected_layer, tile_num, self.selected_block)
@@ -135,18 +161,18 @@ class MainMqeqHandler:
         try:
             img = Image.open(filename)
         except FileNotFoundError:
-            raise MqeqError('The file "{0}" does not exist'.format(filename))
+            raise common.MqeqError('The file "{0}" does not exist'.format(filename))
         except OSError:
-            raise MqeqError('Unknown image format'.format(filename))
+            raise common.MqeqError('Unknown image format'.format(filename))
         try:
             gba_image.validate_gbaimage(img)
         except gba_image.ImageFormatError as e:
-            raise MqeqError(str(e))
+            raise common.MqeqError(str(e))
         return img
 
     def load_palette_from_image(self, filename):
         if not self.is_palette_modification_allowed():
-            raise MqeqError('This palette does not belong to the map')
+            raise common.MqeqError('This palette does not belong to the map')
         img = self.open_image(filename)
 
         self.loaded_map.set_palette(self.selected_palette, img.getpalette())
@@ -183,7 +209,7 @@ class MainMqeqHandler:
         img = self.open_image(filename)
         w, h = img.size
         if w != 128 or h != 256:
-            raise MqeqError('The tileset image size has to be 128x256 px')
+            raise common.MqeqError('The tileset image size has to be 128x256 px')
         self.loaded_map.change_tileset_image(self.selected_tileset, img)
 
     def select_tile_at_block_part(self, block_part):

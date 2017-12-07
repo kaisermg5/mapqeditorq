@@ -8,15 +8,18 @@ from PIL import Image
 
 class PaletteHeader2(StructureBase):
     FORMAT = (
-        ('pal_index', 'u16'),
-        ('unk1', 'u8'),
-        ('unk2', 'u8')
+        ('palette_table_index', 'u16'),
+        ('palette_dest_index', 'u8'),
+        ('amount_of_palettes', 'u8')
     )
 
     def __init__(self):
-        self.pal_index = None
-        self.unk1 = None
-        self.unk2 = None
+        self.palette_table_index = None
+        self.palette_dest_index = None
+        self.amount_of_palettes = None
+
+    def is_final(self):
+        return self.amount_of_palettes & 0x80 == 0
 
 
 class Palettes:
@@ -26,27 +29,28 @@ class Palettes:
 
     def __init__(self):
         self.header1 = None
-        self.header1_ptr = None
-        self.header2 = None
 
         self.palettes_list = [None] * 16
         self.palettes_imgs = [None] * 16
         self.palettes_mod_count = [0] * 16
         self.modified = False
 
-    def load(self, game, header, header_ptr):
+    def set_header(self, header):
         self.header1 = header
-        self.header1_ptr = header_ptr
-        header2_ptr = game.get_palette_header2_pointer(self.header1.get_palette_header2_index())
-        self.header2 = game.read_struct_at(header2_ptr, PaletteHeader2)
 
-        self.load_shared_palettes(game)
-
+    def extract_from_game(self, game):
         # Load map palettes
-        for i in range(13):
-            palette_ptr = game.get_palette_pointer(self.header2.pal_index + i)
-            palette_data = game.read(palette_ptr, 32)
-            self.palettes_list[i + 2] = common.palette_from_gba_to_rgb(palette_data)
+        i = 2
+        while True:
+            header2_ptr = game.get_palette_header2_pointer(self.header1.get_palette_header2_index())
+            header2 = game.read_struct_at(header2_ptr, PaletteHeader2)
+            for j in range(header2.amount_of_palettes):
+                palette_ptr = game.get_palette_pointer(header2.palette_table_index + j)
+                palette_data = game.read(palette_ptr, 32)
+                self.palettes_list[i] = common.palette_from_gba_to_rgb(palette_data)
+                i += 1
+            if header2.is_final():
+                break
 
     def load_shared_palettes(self, game):
         # Load palettes shared by all maps
@@ -54,6 +58,10 @@ class Palettes:
             palette_ptr = game.get_palette_pointer(table_index)
             palette_data = game.read(palette_ptr, 32)
             self.palettes_list[pal_index] = common.palette_from_gba_to_rgb(palette_data)
+
+    def set_palettes(self, palette_list):
+        for i in range(13):
+            self.palettes_list[i + 2] = palette_list[i]
 
     def get_palette(self, index):
         return self.palettes_list[index]
@@ -66,15 +74,6 @@ class Palettes:
 
     def was_modified(self):
         return self.modified
-
-    def save_to_rom(self, game):
-        if self.was_modified():
-            for i in range(13):
-                data = gba_image.palette_to_gba(self.palettes_list[i + 2])
-                palette_ptr = game.get_palette_pointer(self.header2.pal_index + i)
-                game.write(palette_ptr, data)
-
-            self.modified = False
 
     def get_mod_count(self, pal_num):
         return self.palettes_mod_count[pal_num]

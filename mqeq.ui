@@ -977,7 +977,8 @@
     <property name="title">
      <string>File</string>
     </property>
-    <addaction name="action_Open_ROM"/>
+    <addaction name="action_New_Project"/>
+    <addaction name="action_Open_Project"/>
     <addaction name="action_Save"/>
    </widget>
    <widget class="QMenu" name="menuEdit">
@@ -1003,13 +1004,21 @@
     <addaction name="menuImport"/>
     <addaction name="menuExport"/>
    </widget>
+   <widget class="QMenu" name="menuProject">
+    <property name="title">
+     <string>Project</string>
+    </property>
+    <addaction name="actionMake"/>
+    <addaction name="actionClean"/>
+   </widget>
    <addaction name="menuFile"/>
    <addaction name="menuEdit"/>
+   <addaction name="menuProject"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
-  <action name="action_Open_ROM">
+  <action name="action_Open_Project">
    <property name="text">
-    <string>Open ROM</string>
+    <string>Open Project</string>
    </property>
   </action>
   <action name="actionSave">
@@ -1076,6 +1085,21 @@
   <action name="import_blocks_behaviour_action">
    <property name="text">
     <string>Blocks behaviour</string>
+   </property>
+  </action>
+  <action name="action_New_Project">
+   <property name="text">
+    <string>New Project</string>
+   </property>
+  </action>
+  <action name="actionMake">
+   <property name="text">
+    <string>Make</string>
+   </property>
+  </action>
+  <action name="actionClean">
+   <property name="text">
+    <string>Clean</string>
    </property>
   </action>
  </widget>

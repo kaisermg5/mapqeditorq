@@ -1,10 +1,8 @@
 
 import os
-import sys
 import pickle
 
-EDITOR_DIRECTORY = os.path.dirname(os.path.realpath(sys.argv[0]))
-SETTINGS_FILENAME = os.path.join(EDITOR_DIRECTORY, 'settings.dat')
+from . import common
 
 
 class UserSettings:
@@ -13,8 +11,8 @@ class UserSettings:
 
     @classmethod
     def load(cls):
-        if os.path.exists(SETTINGS_FILENAME):
-            with open(SETTINGS_FILENAME, 'rb') as f:
+        if os.path.exists(common.SETTINGS_FILENAME):
+            with open(common.SETTINGS_FILENAME, 'rb') as f:
                 settings = pickle.load(f)
             if not isinstance(settings, cls):
                 settings = cls()
@@ -23,5 +21,5 @@ class UserSettings:
         return settings
 
     def save(self):
-        with open(SETTINGS_FILENAME, 'wb') as f:
+        with open(common.SETTINGS_FILENAME, 'wb') as f:
             pickle.dump(self, f)

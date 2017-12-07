@@ -6,8 +6,6 @@ from mapqeditorq.game import gba_image
 class Tileset:
     def __init__(self):
         self.header = None
-        self.header_ptr = None
-        self.original_compressed_size = None
 
         self.paleted_tiles = [([None] * 512) for i in range(16)]
         self.no_palette_tiles = [None] * 512
@@ -19,12 +17,17 @@ class Tileset:
 
         self.modified = False
 
-    def load(self, game, palettes, header, header_ptr):
-        self.header_ptr = header_ptr
+    def set_header(self, header):
         self.header = header
+
+    def set_palettes(self, palettes):
+        if self.palettes is not None:
+            self.modified = True
         self.palettes = palettes
         self.initialize_palette_mod_count()
-        img_data, self.original_compressed_size = game.read_compressed(self.header.get_compressed_data_ptr())
+
+    def load_from_game(self, game):
+        img_data, _ = game.read_compressed(self.header.get_compressed_data_ptr())
 
         for i in range(len(img_data) // 32):
             tile_img_data = []
@@ -79,34 +82,19 @@ class Tileset:
             self.draw_imgs()
         return self.full_imgs[palette_num]
 
-    def change_image(self, img):
+    def set_image(self, img):
         gba_image.validate_gbaimage(img)
         self.paleted_tiles = [([None] * 512) for i in range(16)]
         self.no_palette_tiles = common.crop_img_in_tiles(img)
-        self.modified = True
         self.no_palette_full = img
         self.draw_imgs()
 
+    def change_image(self, img):
+        self.set_image(img)
+        self.modified = True
+
     def was_modified(self):
         return self.modified
-
-    def save_to_rom(self, game):
-        if self.was_modified():
-            data = self.to_bytes()
-            old_offset = self.header.get_compressed_data_ptr()
-            new_offset, self.original_compressed_size = game.alloc_modified_data(
-                data,
-                self.original_compressed_size,
-                old_offset,
-                compressed=True,
-                start_address=common.MAPDATA_KEY,
-            )
-
-            if old_offset != new_offset:
-                self.header.set_compressed_data_ptr(new_offset)
-                game.write(self.header_ptr, self.header.to_bytes())
-
-            self.modified = False
 
     def to_bytes(self):
         return gba_image.img_to_gba_16colors(self.no_palette_full)

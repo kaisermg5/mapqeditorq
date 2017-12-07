@@ -1,8 +1,11 @@
 
+import abc
 from math import ceil
 from PIL import Image
+import re
 
-from mapqeditorq.game.structure_utils import StructureBase
+
+from ..mqeq_logic.parsers import ParseableStructBase
 
 BASE_TILE_16x16 = Image.new('RGB', (16, 16))
 BASE_TILE_8x8 = Image.new('P', (8, 8))
@@ -66,7 +69,7 @@ def crop_img_in_tiles(img):
     return tiles
 
 
-class MapDataGenericHeader(StructureBase):
+class MapDataGenericHeader(ParseableStructBase):
     FORMAT = (
         ('masked_data_ptr', 'u32'),     # If this is a palette header, it contains
                                         #   the palette header 2 index
@@ -74,33 +77,115 @@ class MapDataGenericHeader(StructureBase):
         ('uncompressed_size', 'u32')    # If this is a palette header, it is 0
     )
 
+    UNSPECTED_STR_TYPE = -2
+    UNK_HEADER_TYPE = -1
+    MAP_LAYER_1 = 0
+    MAP_LAYER_2 = 1
+    BLOCKS_1_IMG_DATA = 2
+    BLOCKS_2_IMG_DATA = 3
+    BLOCKS_1_BEHAVIOURS = 4
+    BLOCKS_2_BEHAVIOURS = 5
+    PALETTE = 6
+    TILESET_1 = 7
+    TILESET_2 = 8
+    TILESET_3 = 9
+
+    HEADER_TYPE_DICT = {
+        0x2025eb4: MAP_LAYER_1,
+        0x200b654: MAP_LAYER_2,
+        0x202ceb4: BLOCKS_1_IMG_DATA,
+        0x2012654: BLOCKS_2_IMG_DATA,
+        0x202aeb4: BLOCKS_1_BEHAVIOURS,
+        0x2010654: BLOCKS_2_BEHAVIOURS,
+        0x6000000: TILESET_1,
+        0x6004000: TILESET_2,
+        0x6008000: TILESET_3,
+    }
+
     def __init__(self):
+        super().__init__()
         self.masked_data_ptr = None
         self.uncompress_address = None
         self.uncompressed_size = None
 
     def get_compressed_data_ptr(self):
-        return decode_mapdata_pointer(self.masked_data_ptr)
+        if isinstance(self.masked_data_ptr, int):
+            return decode_mapdata_pointer(self.masked_data_ptr)
+        else:
+            m = re.match(r'.*_MAPDATA_PTR\((.*)\)', self.masked_data_ptr)
+            return m.group(1)
 
     def set_compressed_data_ptr(self, new_pointer):
         final_flag = self.is_final()
-        self.masked_data_ptr = encode_mapdata_pointer(new_pointer, final=final_flag)
+        if isinstance(new_pointer, int):
+            self.masked_data_ptr = encode_mapdata_pointer(new_pointer, final=final_flag)
+        else:
+            self.masked_data_ptr = (
+                'MASK_MAPDATA_PTR({0})',
+                'MASK_FINAL_MAPDATA_PTR({0})'
+            )[final_flag].format(new_pointer)
+        self.modified = True
 
     def is_final(self):
-        return is_final_encoded_pointer(self.masked_data_ptr)
+        if isinstance(self.masked_data_ptr, int):
+            return is_final_encoded_pointer(self.masked_data_ptr)
+        else:
+            return 'MASK_FINAL_MAPDATA_PTR' in self.masked_data_ptr
 
     def get_uncompressed_size(self):
         return self.uncompressed_size & 0x7ffffff
 
     def set_uncompressed_size(self, size):
         self.uncompressed_size = size | 0x80000000
+        self.modified = True
 
     def is_palette_header(self):
-        return self.uncompressed_size == 0 and self.uncompress_address == 0
+        return self.uncompress_address == 0
 
     def get_palette_header2_index(self):
         return self.masked_data_ptr
 
+    def set_palettes_ptr(self, label):
+        self.masked_data_ptr = label
+        self.modified = True
+
     def set_palette_header2_index(self, index):
         self.masked_data_ptr = index
+        self.modified = True
+
+    def header_type(self):
+        if isinstance(self.uncompress_address, str):
+            return self.UNSPECTED_STR_TYPE
+        elif self.uncompress_address < 0x1000000:
+            return self.PALETTE
+        elif self.uncompress_address not in self.HEADER_TYPE_DICT:
+            return self.UNK_HEADER_TYPE
+        else:
+            return self.HEADER_TYPE_DICT[self.uncompress_address]
+
+
+class MapDataObjectBase:
+    def __init__(self):
+        self.header = None
+
+    def set_header(self, header):
+        self.header = header
+
+    @abc.abstractmethod
+    def set_data(self, data):
+        raise NotImplementedError('You must override this')
+
+    @abc.abstractmethod
+    def was_modified(self):
+        raise NotImplementedError('You must override this')
+
+    @abc.abstractmethod
+    def set_modified(self, value):
+        raise NotImplementedError('You must override this')
+
+    @abc.abstractmethod
+    def to_bytes(self):
+        raise NotImplementedError('You must override this')
+
+
 
